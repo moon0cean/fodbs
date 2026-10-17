@@ -1,0 +1,11 @@
+services:
+  server:
+    ports: !reset []
+    networks:
+      - default
+      - edge
+
+networks:
+  edge:
+    name: fodbs-edge
+    external: true

@@ -1,0 +1,9 @@
+node_modules
+dist
+web/dist
+.env
+.idea
+*.log
+test-results
+playwright-report
+.specify/feature.json

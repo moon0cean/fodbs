@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fodbs-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fodbs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fodbs}
+      POSTGRES_DB: ${POSTGRES_DB:-fodbs}
+    volumes:
+      - fodbs_pg:/var/lib/postgresql/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fodbs}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build: .
+    container_name: fodbs-server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fodbs}:${POSTGRES_PASSWORD:-fodbs}@postgres:5432/${POSTGRES_DB:-fodbs}
+      PLAYWRIGHT_NO_SANDBOX: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8088:8088"
+    mem_limit: 256m
+
+  worker:
+    build: .
+    container_name: fodbs-worker
+    command: ["node", "dist/worker.js"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fodbs}:${POSTGRES_PASSWORD:-fodbs}@postgres:5432/${POSTGRES_DB:-fodbs}
+      PLAYWRIGHT_NO_SANDBOX: "true"
+      GYM_HEADLESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 768m
+
+volumes:
+  fodbs_pg:

@@ -1,0 +1,341 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { DateTime } from 'luxon';
+import { z } from 'zod';
+import type { AppConfig } from './config.js';
+import type { AppDatabase, SessionUser } from './db/index.js';
+import { hashPassword, verifyPassword } from './passwords.js';
+import { newSecret, sha256 } from './secrets.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    user: SessionUser | null;
+  }
+}
+
+const loginBody = z.object({
+  email: z.string().trim().email(),
+  password: z.string().min(1).max(200),
+});
+
+const acceptBody = z.object({
+  token: z.string().min(20),
+  email: z.string().trim().email(),
+  password: z.string().min(1).max(200),
+  displayName: z.string().trim().min(1).max(40),
+});
+
+const credentialBody = z.object({
+  username: z.string().trim().min(1).max(200),
+  password: z.string().min(1).max(200),
+});
+
+const spot = z.enum(['front_left', 'front_right', 'back']);
+const availabilityBody = z.object({ in: z.boolean() });
+const seatBody = z.object({ join: z.boolean(), position: spot.optional() });
+const guestBody = z.object({ name: z.string().trim().max(40), position: spot });
+const activeBody = z.object({ active: z.boolean() });
+const preferenceBody = z.object({
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  preferredTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  partySize: z.union([z.literal(2), z.literal(3)]),
+});
+
+const inviteBody = z.object({
+  role: z.enum(['admin', 'member']).default('member'),
+  email: z.union([z.string().trim().email(), z.literal('')]).optional(),
+});
+
+const slotBody = z.object({
+  weekday: z.number().int().min(1).max(7),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  durationMinutes: z.number().int().min(30).max(180),
+  clubCode: z.string().trim().min(1).max(32),
+});
+
+export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: AppConfig): void {
+  app.decorateRequest('user', null);
+
+  app.addHook('onRequest', async (request) => {
+    request.user = null;
+    const raw = request.cookies.fodbs_session;
+    if (!raw) return;
+    request.user = await db.findSession(sha256(raw), new Date());
+  });
+
+  app.get('/api/health', async () => ({ ok: true }));
+
+  app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const body = parse(loginBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    const user = await db.findUserByEmail(body.email.toLowerCase());
+    const valid = user ? await verifyPassword(user.passwordHash, body.password) : false;
+    if (!user || !valid) return fail(reply, 401, 'invalid_credentials');
+    await issueSession(db, user.id, reply, config);
+    return publicUser(user);
+  });
+
+  app.post('/api/auth/logout', async (request, reply) => {
+    const raw = request.cookies.fodbs_session;
+    if (raw) await db.deleteSession(sha256(raw));
+    reply.clearCookie('fodbs_session', cookieOptions(config));
+    return reply.code(204).send();
+  });
+
+  app.get('/api/auth/me', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const account = await db.accountView(user.id);
+    return { ...publicUser(user), hasGymCredentials: account.hasGymCredentials };
+  });
+
+  app.post('/api/auth/accept-invite', async (request, reply) => {
+    const body = parse(acceptBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    if (body.password.length < 10) return fail(reply, 400, 'weak_password');
+    const passwordHash = await hashPassword(body.password);
+    const result = await db.acceptInvite({
+      tokenHash: sha256(body.token),
+      email: body.email.toLowerCase(),
+      passwordHash,
+      displayName: body.displayName,
+      now: new Date(),
+    });
+    if ('error' in result) return fail(reply, 400, result.error);
+    await issueSession(db, result.user.id, reply, config);
+    return reply.code(201).send(publicUser(result.user));
+  });
+
+  app.get('/api/account', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const account = await db.accountView(user.id);
+    return {
+      balance: account.balance,
+      hasGymCredentials: account.hasGymCredentials,
+      gymUsername: account.gymUsername,
+      preferences: account.preferences,
+      active: user.active,
+      reservations: account.reservations.map((reservation) => ({
+        ...reservation,
+        startsAt: reservation.startsAt.toISOString(),
+      })),
+    };
+  });
+
+  app.patch('/api/account/active', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(activeBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.setOwnActive(user.id, body.active, new Date());
+    return { ...publicUser(user), active: body.active };
+  });
+
+  app.put('/api/account/credentials', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(credentialBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.saveCredentials(user.id, body.username, body.password, new Date());
+    return reply.code(204).send();
+  });
+
+  app.put('/api/account/preferences', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(preferenceBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.savePreferences({ ...body, userId: user.id, now: new Date() });
+    return reply.code(204).send();
+  });
+
+  app.get('/api/dashboard', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const query = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).safeParse(request.query);
+    if (!query.success) return fail(reply, 400, 'invalid_body');
+    const date = query.data.date ?? DateTime.now().setZone(config.zone).toISODate();
+    if (!date) return fail(reply, 400, 'invalid_body');
+    const dashboard = await db.dashboard(date, user.id, new Date());
+    if ('error' in dashboard && dashboard.error) return fail(reply, 400, dashboard.error);
+    return {
+      ...dashboard,
+      occurrences: dashboard.occurrences.map((occurrence) => ({
+        ...occurrence,
+        startsAt: occurrence.startsAt.toISOString(),
+      })),
+    };
+  });
+
+  app.post('/api/occurrences/:id/availability', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(availabilityBody, request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.setAvailability(user.id, params.data.id, body.in, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/reservations/:id/seats', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(seatBody, request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    if (body.join && !body.position) return fail(reply, 400, 'invalid_body');
+    const error = await db.setSeat(user.id, params.data.id, body.join, body.position ?? null, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/reservations/:id/guests', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(guestBody, request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.addCourtGuest(user.id, params.data.id, body.name, body.position, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/reservations/:id/guests/:seatId', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const params = z.object({ id: z.string().min(1), seatId: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.removeCourtGuest(user.id, params.data.id, params.data.seatId, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.get('/api/admin/users', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    return { users: await db.listUsers() };
+  });
+
+  app.patch('/api/admin/users/:id', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const body = parse(activeBody, request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    const result = await db.setUserActive(params.data.id, body.active, actor.id);
+    if (result === 'self') return fail(reply, 400, 'self_deactivate');
+    if (result === 'missing') return fail(reply, 404, 'missing');
+    return reply.code(204).send();
+  });
+
+  app.post('/api/admin/invites', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const body = parse(inviteBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    const secret = newSecret();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const email = body.email ? body.email.toLowerCase() : null;
+    const role = body.role ?? 'member';
+    await db.createInvite({
+      tokenHash: secret.hash,
+      email,
+      role,
+      createdBy: actor.id,
+      expiresAt,
+    });
+    return reply.code(201).send({ token: secret.raw, expiresAt: expiresAt.toISOString(), role, email });
+  });
+
+  app.get('/api/admin/invites', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const invites = await db.listInvites();
+    return {
+      invites: invites.map((invite) => ({
+        ...invite,
+        expiresAt: invite.expiresAt.toISOString(),
+        usedAt: invite.usedAt?.toISOString() ?? null,
+      })),
+    };
+  });
+
+  app.get('/api/admin/slot-rules', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    return { rules: await db.listSlotRules() };
+  });
+
+  app.post('/api/admin/slot-rules', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const body = parse(slotBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    const id = await db.createSlotRule({ ...body, now: new Date() });
+    return reply.code(201).send({ id, ...body, active: true });
+  });
+
+  app.patch('/api/admin/slot-rules/:id', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const body = parse(activeBody, request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    const updated = await db.setSlotRuleActive(params.data.id, body.active);
+    if (!updated) return fail(reply, 404, 'missing');
+    return reply.code(204).send();
+  });
+}
+
+function parse<T>(schema: z.ZodType<T>, body: unknown): T | null {
+  const result = schema.safeParse(body);
+  return result.success ? result.data : null;
+}
+
+function fail(reply: FastifyReply, status: number, error: string) {
+  return reply.code(status).send({ error });
+}
+
+function requireUser(request: FastifyRequest, reply: FastifyReply): SessionUser | null {
+  if (!request.user) {
+    void fail(reply, 401, 'unauthenticated');
+    return null;
+  }
+  return request.user;
+}
+
+function requireAdmin(request: FastifyRequest, reply: FastifyReply): SessionUser | null {
+  const user = requireUser(request, reply);
+  if (!user) return null;
+  if (user.role !== 'admin') {
+    void fail(reply, 403, 'forbidden');
+    return null;
+  }
+  return user;
+}
+
+function publicUser(user: SessionUser) {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+    active: user.active,
+  };
+}
+
+function cookieOptions(config: AppConfig) {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: config.cookieSecure,
+    path: '/',
+    maxAge: 60 * 60 * 24 * 14,
+  };
+}
+
+async function issueSession(db: AppDatabase, userId: string, reply: FastifyReply, config: AppConfig) {
+  const secret = newSecret();
+  await db.createSession(userId, secret.hash, new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
+  reply.setCookie('fodbs_session', secret.raw, cookieOptions(config));
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+web/dist
+.git
+.env
+tests
+specs
+.specify
+*.md
+!deploy/*.md
