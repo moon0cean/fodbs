@@ -24,6 +24,12 @@ export type AppConfig = {
   bootstrapPassword: string;
   bootstrapName: string;
   attemptBackoffMs: number;
+  publicUrl: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpFrom: string;
 };
 
 function loadEnvFile(): void {
@@ -77,7 +83,7 @@ export function loadConfig(): AppConfig {
     preLoginMinutes: integer('PRELOGIN_MINUTES', 2),
     tickMs: integer('TICK_MS', 15_000),
     zone: process.env.TZ_ZONE ?? 'Europe/Madrid',
-    gymBaseUrl: process.env.GYM_BASE_URL ?? 'https://www.dir.cat/net/mv/identificacio.aspx',
+    gymBaseUrl: process.env.GYM_BASE_URL ?? 'https://pistes.esportiurocafort.com/index.php',
     gymFlow,
     gymHeadless: process.env.GYM_HEADLESS !== 'false',
     playwrightNoSandbox: process.env.PLAYWRIGHT_NO_SANDBOX === 'true',
@@ -85,6 +91,12 @@ export function loadConfig(): AppConfig {
     bootstrapPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD ?? '',
     bootstrapName: process.env.BOOTSTRAP_ADMIN_NAME ?? 'Admin',
     attemptBackoffMs: integer('ATTEMPT_BACKOFF_MS', 60_000),
+    publicUrl: (process.env.PUBLIC_URL ?? '').replace(/\/$/, ''),
+    smtpHost: process.env.SMTP_HOST ?? '',
+    smtpPort: integer('SMTP_PORT', 587),
+    smtpUser: process.env.SMTP_USER ?? '',
+    smtpPass: process.env.SMTP_PASS ?? '',
+    smtpFrom: process.env.SMTP_FROM ?? '',
   };
 }
 

@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import type { GymBookRequest, GymGateway, GymLogin, GymSession } from './gateway.js';
+import type { GymBookRequest, GymGateway, GymListedBooking, GymLogin, GymSession } from './gateway.js';
 
 type FakeSession = GymSession & { id: string };
 
 export class FakeGymGateway implements GymGateway {
   readonly bookings: { externalRef: string; username: string; courtIndex: number; startsAt: string }[] = [];
+  listed: GymListedBooking[] = [];
   failLogins = new Set<string>();
   failBooks = false;
 
   ready(): boolean {
+    return true;
+  }
+
+  canList(): boolean {
     return true;
   }
 
@@ -33,6 +38,10 @@ export class FakeGymGateway implements GymGateway {
     const index = this.bookings.findIndex((booking) => booking.externalRef === externalRef);
     if (index < 0) throw new Error('unknown_ref');
     this.bookings.splice(index, 1);
+  }
+
+  async listBookings(): Promise<GymListedBooking[]> {
+    return this.listed;
   }
 
   async close(): Promise<void> {}

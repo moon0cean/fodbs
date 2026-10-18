@@ -34,6 +34,16 @@ export const gymCredentials = pgTable('gym_credentials', {
   passwordCiphertext: text('password_ciphertext').notNull(),
   passwordNonce: text('password_nonce').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+  syncedAt: timestamp('synced_at', { withTimezone: true, mode: 'date' }),
+});
+
+export const accessRequests = pgTable('access_requests', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  status: text('status').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+  resolvedBy: text('resolved_by'),
 });
 
 export const slotRules = pgTable('slot_rules', {
@@ -50,7 +60,7 @@ export const occurrences = pgTable(
   'occurrences',
   {
     id: text('id').primaryKey(),
-    slotRuleId: text('slot_rule_id').notNull().references(() => slotRules.id),
+    slotRuleId: text('slot_rule_id').references(() => slotRules.id),
     startsAt: timestamp('starts_at', { withTimezone: true, mode: 'date' }).notNull(),
     durationMinutes: integer('duration_minutes').notNull(),
     clubCode: text('club_code').notNull(),

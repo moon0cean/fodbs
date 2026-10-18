@@ -2,18 +2,19 @@
 
 ## Portal
 
-DiR's member area is an ASP.NET WebForms page, not an API:
-`https://www.dir.cat/net/mv/identificacio.aspx`. The login form posts
-`ctl00$content$txtIdentificador`, `ctl00$content$txtContrasenya`, and
-`ctl00$content$imgbEnviar`, and it carries `__VIEWSTATE`. A hand-built HTTP
-client would have to replay that postback and whatever follows after login.
-That flow is behind authentication and was not recorded in this feature.
+Squash reservations are made on `https://pistes.esportiurocafort.com`, not the
+old DiR identificacio page. Login posts `NomUsuari` and `Contrasenya`. A court
+is chosen on `ReservaFase1.php?TipusPista=SQUASH`, a free 15-minute start links
+to `ReservaFase2.php`, and confirming with a bo posts to `ReservaFase3.php`.
+Success text is "Reserva finalitzada correctament". The reservation counter is
+the argument of `ConfirmaEliminaPista` on `ReservesLlista.php`, and cancelling
+is `ReservesLlista.php?Operacio=EliminaPista&Comptador={ref}`. Open days roll
+forward about seven days from the slot start. Card payment is a separate
+checkout and is not used.
 
-**Decision**: Playwright drives the portal and keeps the browser session from
-pre-login through submit. The login selectors above are fixed for DiR. The
-post-login court form is configuration (`GYM_BOOK_URL` and selectors) filled
-after one headed recording described in the quickstart. A local fixture site
-implements the same gateway methods for tests.
+**Decision**: Playwright drives that sequence and pays with a bo. Courts SQ04,
+SQ05, SQ10, and SQ11 are court indexes 0–3. SQ12 is recognized when listing.
+A local fixture site implements the same gateway methods for tests.
 
 **Alternative rejected**: Raw HTTP now. It is a later spec, once a recording
 shows a stable postback sequence.
@@ -59,7 +60,7 @@ that also returns the password.
 
 The CX23 already runs Caddy, Headscale, RustDesk, and family-api from
 family-net. FODBS joins a shared Docker network `fodbs-edge` so Caddy can
-proxy `fodbs.family.yk2.dev` to the FODBS server. Postgres has no host port.
+proxy `fodbs.yk2.dev` to the FODBS server. Postgres has no host port.
 The worker launches Chromium with `/dev/shm` disabled so the 768 MB cap is
 the real limit.
 

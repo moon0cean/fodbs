@@ -24,14 +24,12 @@ so Caddy can reach it by container name.
 docker network create fodbs-edge
 ```
 
-On the server, from this repo:
+A merge to `main` builds `ghcr.io/moon0cean/fodbs:main` and the deploy job
+pulls it on the server. It does not build Chromium on the CX23.
 
-```bash
-docker compose -f docker-compose.yml -f deploy/docker-compose.hetzner.yml up -d --build
-```
-
-`deploy/docker-compose.hetzner.yml` drops the published `8088` port and attaches
-`fodbs-server` to `fodbs-edge`. Postgres stays on the Compose network only.
+`deploy/docker-compose.hetzner.yml` points the server and the worker at that
+image, drops the published `8088` port, and attaches `fodbs-server` to
+`fodbs-edge`. Postgres stays on the Compose network only.
 
 ## Caddy
 
@@ -54,23 +52,50 @@ networks:
 Add this site to `family-net/vps/caddy/Caddyfile`, next to `app.{$FAMILY_DOMAIN}`:
 
 ```caddyfile
-fodbs.{$FAMILY_DOMAIN} {
+http://fodbs.yk2.dev {
+	encode gzip
+	reverse_proxy fodbs-server:8088
+}
+
+fodbs.yk2.dev {
 	encode gzip
 	reverse_proxy fodbs-server:8088
 }
 ```
 
-DNS: an A record `fodbs.family.yk2.dev` to the same VPS address as
-`app.family.yk2.dev`. Reload Caddy after the file change. Leave UFW as it is.
+The plain HTTP site is required while Cloudflare proxies the name. Proxied
+mode calls the origin on port 80, and Caddy's automatic HTTPS redirect would
+loop.
+
+DNS, in the `yk2.dev` zone: an A record `fodbs` to `91.98.138.43`,
+proxied (orange cloud). Cloudflare SSL/TLS mode must be Full (strict).
+The name is `fodbs.yk2.dev`, not a name under `family.yk2.dev`.
+
+FODBS is served by the public Caddy listener on ports 80 and 443. It is not
+on the Tailscale network, and opening the site does not require Tailscale.
+Reload Caddy after the file change. Leave UFW as it is.
 Ports 80 and 443 are already open for Caddy. Do not open 5432.
 
 ## Secrets
 
-Copy `.env` to the VPS by hand, for example `/opt/fodbs/.env`. Do not commit
-it. `CREDENTIALS_KEY` is 32 bytes of base64. Set `COOKIE_SECURE=true`.
-Keep the Postgres password in that file and in the Compose interpolation so
-`DATABASE_URL` matches. The file sits beside family-net's untracked env and
-is not part of this repository.
+Sensitive values live as GitHub Actions secrets on `moon0cean/fodbs`. The
+deploy job writes `/opt/fodbs/.env` from them and never commits it. The file
+is mode `600`.
+
+Secrets:
+
+- `CREDENTIALS_KEY` — 32 bytes of base64. Keep the key already on the server.
+  A new key cannot read bookings that were saved with the old one.
+- `POSTGRES_PASSWORD` — the password of the existing `fodbs` database volume.
+- `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_NAME`
+- `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — optional. When all three are set,
+  mail uses `smtp.gmail.com` on port 587. When they are empty, invites stay
+  as copyable links.
+- `DEPLOY_SSH_KEY` — the private key the workflow uses to reach the host.
+
+`deploy/render-env.mjs` fills the rest: `PUBLIC_URL=https://fodbs.yk2.dev`,
+`COOKIE_SECURE=true`, the Rocafort login URL, `Europe/Madrid`, and the
+horizon, quota, and tick defaults. Do not copy a laptop `.env` onto the host.
 
 ## What stays untouched
 

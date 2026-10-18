@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Court, type Occupant, type Spot } from './api';
+import { courtNumber } from './courts';
 import { useI18n } from './i18n';
 
 const SPOTS: Spot[] = ['front_left', 'front_right', 'back'];
@@ -15,7 +16,7 @@ export function SquashCourt({
   onChange: () => void;
   onError: (value: string) => void;
 }) {
-  const { t, status } = useI18n();
+  const { t, status, explain } = useI18n();
   const [guestName, setGuestName] = useState('');
   const joinable = court.status === 'held' && court.reservationId;
   const mine = court.occupants.some((occupant) => occupant.userId === meId);
@@ -32,16 +33,16 @@ export function SquashCourt({
     void api(`/api/reservations/${court.reservationId}/seats`, {
       method: 'POST',
       body: JSON.stringify({ join, position: spot }),
-    }).then(onChange).catch((reason: unknown) => onError(text(reason)));
+    }).then(onChange).catch((reason: unknown) => onError(text(reason, explain)));
   }
 
   return (
     <article className={`squash status-${court.status}`}>
       <div className="court-label">
-        <span>{t('court')} {court.courtIndex + 1}</span>
+        <span>{t('court')} {courtNumber(court.courtIndex)}</span>
         <em>{status(court.status)}</em>
       </div>
-      <div className="diagram" aria-label={`${t('court')} ${court.courtIndex + 1}`}>
+      <div className="diagram" aria-label={`${t('court')} ${courtNumber(court.courtIndex)}`}>
         <div className="front-wall" />
         <div className="short-line" />
         <div className="half-line" />
@@ -84,7 +85,7 @@ export function SquashCourt({
             }).then(() => {
               setGuestName('');
               onChange();
-            }).catch((reason: unknown) => onError(text(reason)));
+            }).catch((reason: unknown) => onError(text(reason, explain)));
           }}
         >
           <label>{t('guest')}
@@ -103,7 +104,7 @@ export function SquashCourt({
             if (!court.reservationId) return;
             void api(`/api/reservations/${court.reservationId}/guests/${occupant.id}`, { method: 'DELETE' })
               .then(onChange)
-              .catch((reason: unknown) => onError(text(reason)));
+              .catch((reason: unknown) => onError(text(reason, explain)));
           }}
         >
           {t('removeGuest')} {occupant.displayName || t('guest')}
@@ -117,6 +118,6 @@ function initials(name: string): string {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('');
 }
 
-function text(reason: unknown): string {
-  return reason instanceof Error ? reason.message.replaceAll('_', ' ') : 'error';
+function text(reason: unknown, explain: (code: string) => string): string {
+  return reason instanceof Error ? explain(reason.message) : explain('request_failed');
 }

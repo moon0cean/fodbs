@@ -20,12 +20,14 @@ import {
   type ShapedReservation,
   type Spot,
 } from '../domain.js';
+import type { GymListedBooking } from '../gym/gateway.js';
 import type { SchedulerStore, UpcomingOccurrence } from '../scheduler.js';
 import { schemaSql } from './migrate.js';
 import * as schema from './schema.js';
 import {
   availability,
   bookingAttempts,
+  accessRequests,
   gymCredentials,
   invites,
   occurrences,
@@ -138,6 +140,55 @@ export class AppDatabase implements SchedulerStore {
       .sort((a, b) => b.expiresAt.getTime() - a.expiresAt.getTime());
   }
 
+  async replaceInviteToken(id: string, tokenHash: string, expiresAt: Date): Promise<{ email: string } | null> {
+    const rows = await this.db.select().from(invites).where(eq(invites.id, id)).limit(1);
+    const invite = rows[0];
+    if (!invite || invite.usedAt || !invite.email) return null;
+    await this.db.update(invites).set({ tokenHash, expiresAt }).where(eq(invites.id, id));
+    return { email: invite.email };
+  }
+
+  async deleteInvite(id: string): Promise<'missing' | 'used' | 'ok'> {
+    const rows = await this.db.select().from(invites).where(eq(invites.id, id)).limit(1);
+    const invite = rows[0];
+    if (!invite) return 'missing';
+    if (invite.usedAt) return 'used';
+    await this.db.delete(invites).where(eq(invites.id, id));
+    return 'ok';
+  }
+
+  async requestAccess(email: string, now: Date): Promise<void> {
+    const existingUser = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    if (existingUser.length > 0) return;
+    const pending = await this.db
+      .select({ id: accessRequests.id })
+      .from(accessRequests)
+      .where(and(eq(accessRequests.email, email), eq(accessRequests.status, 'pending')))
+      .limit(1);
+    if (pending.length > 0) return;
+    await this.db.insert(accessRequests).values({
+      id: randomUUID(),
+      email,
+      status: 'pending',
+      createdAt: now,
+    });
+  }
+
+  async listAccessRequests(): Promise<{ id: string; email: string; status: string; createdAt: Date }[]> {
+    const rows = await this.db.select().from(accessRequests);
+    return rows
+      .map((row) => ({ id: row.id, email: row.email, status: row.status, createdAt: row.createdAt }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async takeAccessRequest(id: string, status: 'approved' | 'rejected', actorId: string, now: Date): Promise<{ email: string } | null> {
+    const rows = await this.db.select().from(accessRequests).where(eq(accessRequests.id, id)).limit(1);
+    const request = rows[0];
+    if (!request || request.status !== 'pending') return null;
+    await this.db.update(accessRequests).set({ status, resolvedAt: now, resolvedBy: actorId }).where(eq(accessRequests.id, id));
+    return { email: request.email };
+  }
+
   async acceptInvite(input: {
     tokenHash: string;
     email: string;
@@ -209,6 +260,96 @@ export class AppDatabase implements SchedulerStore {
     return updated.length ? 'ok' : 'missing';
   }
 
+  async removeUser(userId: string, actorId: string): Promise<'self' | 'missing' | 'last_admin' | 'has_bookings' | 'ok'> {
+    if (userId === actorId) return 'self';
+    const rows = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const user = rows[0];
+    if (!user) return 'missing';
+    if (user.role === 'admin') {
+      const admins = await this.db.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
+      if (admins.length < 2) return 'last_admin';
+    }
+    const charged = await this.db.select({ id: reservations.id }).from(reservations).where(eq(reservations.chargedUserId, userId)).limit(1);
+    if (charged.length > 0) return 'has_bookings';
+    await this.db.delete(sessions).where(eq(sessions.userId, userId));
+    await this.db.delete(availability).where(eq(availability.userId, userId));
+    await this.db.delete(seats).where(eq(seats.userId, userId));
+    await this.db.delete(playerPreferences).where(eq(playerPreferences.userId, userId));
+    await this.db.delete(gymCredentials).where(eq(gymCredentials.userId, userId));
+    await this.db.delete(invites).where(and(eq(invites.createdBy, userId), isNull(invites.usedAt)));
+    await this.db.update(invites).set({ createdBy: actorId }).where(eq(invites.createdBy, userId));
+    await this.db.delete(users).where(eq(users.id, userId));
+    return 'ok';
+  }
+
+  async pendingCredentialSync(): Promise<{ userId: string; username: string; password: string }[]> {
+    const rows = await this.db.select().from(gymCredentials);
+    return rows
+      .filter((row) => !row.syncedAt || row.syncedAt.getTime() < row.updatedAt.getTime())
+      .map((row) => ({
+        userId: row.userId,
+        username: decryptSecret(row.usernameCiphertext, row.usernameNonce, this.config.credentialsKey, row.userId),
+        password: decryptSecret(row.passwordCiphertext, row.passwordNonce, this.config.credentialsKey, row.userId),
+      }));
+  }
+
+  async markCredentialsSynced(userId: string, now: Date): Promise<void> {
+    await this.db.update(gymCredentials).set({ syncedAt: now }).where(eq(gymCredentials.userId, userId));
+  }
+
+  async importBookings(userId: string, bookings: GymListedBooking[], now: Date): Promise<number> {
+    let imported = 0;
+    for (const booking of bookings) {
+      const known = await this.db.select({ id: reservations.id }).from(reservations).where(eq(reservations.externalRef, booking.externalRef)).limit(1);
+      if (known.length > 0) continue;
+      const sameTime = await this.db.select().from(occurrences).where(eq(occurrences.startsAt, booking.startsAt));
+      let occurrence = sameTime.find((row) => row.durationMinutes === booking.durationMinutes && row.clubCode === booking.clubCode);
+      if (!occurrence) {
+        const id = randomUUID();
+        await this.db.insert(occurrences).values({
+          id,
+          slotRuleId: null,
+          startsAt: booking.startsAt,
+          durationMinutes: booking.durationMinutes,
+          clubCode: booking.clubCode,
+          courtsTargeted: null,
+          grabbedAt: booking.startsAt,
+        });
+        occurrence = { id, slotRuleId: null, startsAt: booking.startsAt, durationMinutes: booking.durationMinutes, clubCode: booking.clubCode, courtsTargeted: null, grabbedAt: booking.startsAt };
+      }
+      const taken = await this.db.select({ courtIndex: reservations.courtIndex }).from(reservations).where(eq(reservations.occurrenceId, occurrence.id));
+      const used = new Set(taken.map((row) => row.courtIndex));
+      let courtIndex = booking.courtIndex;
+      if (used.has(courtIndex)) {
+        courtIndex = [0, 1, 2, 3].find((index) => !used.has(index)) ?? -1;
+      }
+      if (courtIndex < 0) continue;
+      const endsAt = booking.startsAt.getTime() + booking.durationMinutes * 60_000;
+      const reservationId = randomUUID();
+      await this.db.insert(reservations).values({
+        id: reservationId,
+        occurrenceId: occurrence.id,
+        courtIndex,
+        chargedUserId: userId,
+        externalRef: booking.externalRef,
+        status: endsAt <= now.getTime() ? 'played' : 'held',
+        bookedAt: now,
+        hostUserId: userId,
+        effective: true,
+      });
+      await this.db.insert(seats).values({
+        id: randomUUID(),
+        reservationId,
+        userId,
+        guestName: null,
+        position: 'front_left',
+        createdAt: now,
+      });
+      imported += 1;
+    }
+    return imported;
+  }
+
   async saveCredentials(userId: string, username: string, password: string, now: Date): Promise<void> {
     const userCipher = encryptSecret(username, this.config.credentialsKey, userId);
     const passCipher = encryptSecret(password, this.config.credentialsKey, userId);
@@ -230,6 +371,7 @@ export class AppDatabase implements SchedulerStore {
           passwordCiphertext: passCipher.ciphertext,
           passwordNonce: passCipher.nonce,
           updatedAt: now,
+          syncedAt: null,
         },
       });
   }

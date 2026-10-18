@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { translateError } from './errors';
 
 export type Lang = 'es' | 'en';
 
@@ -13,7 +14,8 @@ const copy = {
     restoreAccount: 'Activar cuenta',
     pausedHint: 'La cuenta está en pausa. No entras en las pistas ni en las reservas.',
     activeHint: 'La cuenta está activa.',
-    admin: 'Admin',
+    admin: 'Administración',
+    administrator: 'Administrador',
     signOut: 'Salir',
     inviteOnly: 'Solo por invitación.',
     lede: 'Pistas de squash, reservadas en el minuto en que abre la semana.',
@@ -81,7 +83,31 @@ const copy = {
     resume: 'Reanudar',
     booked: 'Reservado',
     played: 'Jugado',
-    delta: 'Delta',
+    delta: 'Diferencia',
+    tagline: 'Reservas de pistas DiR, sin pelearte con el portal.',
+    invites: 'Invitaciones',
+    requests: 'Solicitudes',
+    sendInvite: 'Enviar invitación',
+    mailed: 'Invitación enviada.',
+    mailMissing: 'El correo no está configurado. Copia el enlace.',
+    status: 'Estado',
+    when: 'Cuándo',
+    actions: 'Acciones',
+    remove: 'Eliminar',
+    resend: 'Reenviar',
+    revoke: 'Revocar',
+    approve: 'Aprobar',
+    reject: 'Rechazar',
+    requestPending: 'pendiente',
+    approved: 'aprobada',
+    rejected: 'rechazada',
+    activeState: 'activa',
+    pausedState: 'en pausa',
+    requestAccess: 'Pedir acceso',
+    requestHint: 'Si no tienes cuenta, deja tu correo. Un administrador tiene que aprobarlo.',
+    requestSend: 'Enviar solicitud',
+    requestSent: 'Solicitud enviada. Un administrador la revisará.',
+    syncHint: 'Al guardar, las reservas actuales de DiR de esta cuenta se incorporan.',
     failed: 'Algo ha fallado',
     min: 'min',
   },
@@ -96,6 +122,7 @@ const copy = {
     pausedHint: 'The account is paused. You are left out of courts and bookings.',
     activeHint: 'The account is active.',
     admin: 'Admin',
+    administrator: 'Admin',
     signOut: 'Sign out',
     inviteOnly: 'Invitation only.',
     lede: 'Squash courts, booked the minute the week opens.',
@@ -163,7 +190,31 @@ const copy = {
     resume: 'Resume',
     booked: 'Booked',
     played: 'Played',
-    delta: 'Delta',
+    delta: 'Difference',
+    tagline: 'Fuck-off DIR booking system',
+    invites: 'Invites',
+    requests: 'Requests',
+    sendInvite: 'Send invite',
+    mailed: 'Invite sent.',
+    mailMissing: 'Mail is not configured. Copy the link.',
+    status: 'Status',
+    when: 'When',
+    actions: 'Actions',
+    remove: 'Remove',
+    resend: 'Resend',
+    revoke: 'Revoke',
+    approve: 'Approve',
+    reject: 'Reject',
+    requestPending: 'pending',
+    approved: 'approved',
+    rejected: 'rejected',
+    activeState: 'active',
+    pausedState: 'paused',
+    requestAccess: 'Request access',
+    requestHint: 'If you have no account, leave your email. An admin has to approve it.',
+    requestSend: 'Send request',
+    requestSent: 'Request sent. An admin will review it.',
+    syncHint: 'Saving brings in this account’s current DiR bookings.',
     failed: 'Something went wrong',
     min: 'min',
   },
@@ -187,6 +238,7 @@ type I18nValue = {
   t: (key: CopyKey) => string;
   weekdayShort: (index: number) => string;
   status: (value: string) => string;
+  explain: (code: string) => string;
 };
 
 const I18nContext = createContext<I18nValue | null>(null);
@@ -205,6 +257,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     t: (key) => copy[lang][key],
     weekdayShort: (index) => WEEKDAY_LABELS[lang][index] ?? '',
     status: (status) => STATUS[lang][status] ?? status,
+    explain: (code) => translateError(lang, code, copy[lang].failed),
   };
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

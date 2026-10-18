@@ -14,7 +14,9 @@ is a defect.
 ### II. Invitation Only
 
 FODBS has no public registration. A person gets an account only by accepting
-an invite created by an admin. The first admin is created from the operator's
+an invite created by an admin. Someone without an account may ask for access
+with an email address. That request does not create an account; an admin
+approves it by sending an invite. The first admin is created from the operator's
 environment when the database is empty. A member can pause and restore their
 own account. While the account is paused they MUST NOT opt in or take a seat,
 and the worker MUST NOT use them. They can still log in to restore it.

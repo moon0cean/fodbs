@@ -117,6 +117,20 @@ end $$;
 create unique index if not exists seats_reservation_position_idx on seats (reservation_id, position);
 create unique index if not exists seats_reservation_user_idx on seats (reservation_id, user_id) where user_id is not null;
 
+alter table gym_credentials add column if not exists synced_at timestamptz;
+alter table occurrences alter column slot_rule_id drop not null;
+create unique index if not exists reservations_external_ref_idx on reservations (external_ref);
+
+create table if not exists access_requests (
+  id text primary key,
+  email text not null,
+  status text not null check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null,
+  resolved_at timestamptz,
+  resolved_by text
+);
+create unique index if not exists access_requests_pending_email_idx on access_requests (email) where status = 'pending';
+
 create table if not exists booking_attempts (
   idempotency_key text primary key,
   kind text not null check (kind in ('grab', 'cancel')),
