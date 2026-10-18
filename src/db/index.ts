@@ -297,6 +297,32 @@ export class AppDatabase implements SchedulerStore {
     await this.db.update(gymCredentials).set({ syncedAt: now }).where(eq(gymCredentials.userId, userId));
   }
 
+  async requestSync(userId: string): Promise<boolean> {
+    const rows = await this.db.update(gymCredentials).set({ syncedAt: null }).where(eq(gymCredentials.userId, userId)).returning({ userId: gymCredentials.userId });
+    return rows.length > 0;
+  }
+
+  async bonsContact(userId: string): Promise<{ email: string; notice: 'ok' | 'low' | 'empty' } | null> {
+    const rows = await this.db
+      .select({ email: users.email, notice: gymCredentials.bonsNotice })
+      .from(gymCredentials)
+      .innerJoin(users, eq(users.id, gymCredentials.userId))
+      .where(eq(gymCredentials.userId, userId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const notice = row.notice === 'low' || row.notice === 'empty' ? row.notice : 'ok';
+    return { email: row.email, notice };
+  }
+
+  async saveBons(userId: string, remaining: number, notice: 'ok' | 'low' | 'empty', now: Date): Promise<void> {
+    await this.db.update(gymCredentials).set({
+      bonsRemaining: remaining,
+      bonsCheckedAt: now,
+      bonsNotice: notice,
+    }).where(eq(gymCredentials.userId, userId));
+  }
+
   async importBookings(userId: string, bookings: GymListedBooking[], now: Date): Promise<number> {
     let imported = 0;
     for (const booking of bookings) {
@@ -381,6 +407,9 @@ export class AppDatabase implements SchedulerStore {
     hasGymCredentials: boolean;
     balance: { bookedMinutes: number; playedMinutes: number };
     preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
+    bonsRemaining: number | null;
+    bonsCheckedAt: Date | null;
+    syncedAt: Date | null;
     reservations: {
       id: string;
       startsAt: Date;
@@ -411,13 +440,16 @@ export class AppDatabase implements SchedulerStore {
       hasGymCredentials: Boolean(creds[0]),
       balance: balanceMinutes(rows, userId),
       preferences: await this.readPreferences(userId),
+      bonsRemaining: creds[0]?.bonsRemaining ?? null,
+      bonsCheckedAt: creds[0]?.bonsCheckedAt ?? null,
+      syncedAt: creds[0]?.syncedAt ?? null,
       reservations: charged,
     };
   }
 
   async dashboard(date: string, userId: string, now: Date) {
     await this.ensureOccurrences(now);
-    const dates = windowDates(now, this.config.zone, this.config.historyDays, this.config.horizonDays);
+    const dates = windowDates(now, this.config.zone, 0, this.config.horizonDays);
     if (!dates.includes(date)) return { error: 'date_out_of_range' as const };
     const people = await this.db.select().from(users).where(eq(users.active, true));
     const rows = await this.balanceRows();

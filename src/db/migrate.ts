@@ -118,6 +118,9 @@ create unique index if not exists seats_reservation_position_idx on seats (reser
 create unique index if not exists seats_reservation_user_idx on seats (reservation_id, user_id) where user_id is not null;
 
 alter table gym_credentials add column if not exists synced_at timestamptz;
+alter table gym_credentials add column if not exists bons_remaining integer;
+alter table gym_credentials add column if not exists bons_checked_at timestamptz;
+alter table gym_credentials add column if not exists bons_notice text not null default 'ok';
 alter table occurrences alter column slot_rule_id drop not null;
 create unique index if not exists reservations_external_ref_idx on reservations (external_ref);
 

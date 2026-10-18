@@ -1,6 +1,7 @@
+import { DateTime } from 'luxon';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { flowIsReady, type GymBookRequest, type GymFlow, type GymGateway, type GymListedBooking, type GymLogin, type GymSession } from './gateway.js';
-import { endClock, fase2Url, isRocafortUrl, parseListedBooking, type ListedRow } from './rocafort.js';
+import { endClock, fase2Url, isRocafortUrl, parseListedBooking, remainingBons, type ListedRow } from './rocafort.js';
 
 type BrowserSession = GymSession & {
   browser: Browser;
@@ -36,6 +37,19 @@ export class PlaywrightGymGateway implements GymGateway {
       const parsed = parseListedBooking(row, this.zone());
       return parsed ? [parsed] : [];
     });
+  }
+
+  async listBons(session: GymSession): Promise<number | null> {
+    if (!isRocafortUrl(this.options.flow.loginUrl)) return null;
+    const page = browserPage(session);
+    await page.goto(`${originOf(this.options.flow.loginUrl)}/BonsLlista.php`);
+    const rows = await page.locator('table').first().locator('tr').evaluateAll((nodes) => nodes.map((node) => (
+      [...node.children].map((cell) => (cell.textContent ?? '').trim())
+    )));
+    if (rows.length === 0) return null;
+    const today = DateTime.now().setZone(this.zone()).toISODate();
+    if (!today) return null;
+    return remainingBons(rows, today);
   }
 
   async openSession(login: GymLogin): Promise<BrowserSession> {

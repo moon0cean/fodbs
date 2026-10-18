@@ -69,6 +69,9 @@ export type Account = {
   hasGymCredentials: boolean;
   gymUsername: string | null;
   active: boolean;
+  bonsRemaining: number | null;
+  bonsCheckedAt: string | null;
+  syncedAt: string | null;
   preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
   reservations: {
     id: string;

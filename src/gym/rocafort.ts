@@ -55,6 +55,30 @@ export function fase2Url(origin: string, courtIndex: number, startsAt: Date, zon
   return `${origin}/ReservaFase2.php?${params.toString()}`;
 }
 
+export type BonPack = { franges: number; consum: number; expiresOn: string | null };
+
+export function remainingBons(rows: string[][], today: string): number {
+  let total = 0;
+  for (const cells of rows) {
+    if (cells[0] === 'Número') continue;
+    const franges = Number(cells[3]);
+    const consum = Number(cells[4]);
+    if (!Number.isInteger(franges) || !Number.isInteger(consum)) continue;
+    const expiry = (cells[5] ?? '').trim();
+    const expiresOn = expiry ? fromClubDate(expiry) : null;
+    if (expiry && !expiresOn) continue;
+    if (expiresOn && expiresOn < today) continue;
+    total += Math.max(0, franges - consum);
+  }
+  return total;
+}
+
+function fromClubDate(value: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) return null;
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
 export type ListedRow = { court: string; date: string; start: string; end: string; id: string };
 
 export function parseListedBooking(row: ListedRow, zone: string): GymListedBooking | null {

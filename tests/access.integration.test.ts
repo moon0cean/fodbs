@@ -73,8 +73,8 @@ test('an access request is approved into one invite email', async () => {
   const gateway = new FakeGymGateway();
   const startsAt = new Date('2026-10-20T18:00:00.000Z');
   gateway.listed = [{ externalRef: 'dir-1', startsAt, durationMinutes: 60, clubCode: 'ROC', courtIndex: 0 }];
-  expect(await syncAccountBookings(db, gateway, { userId: admin.id, username: 'dir-user', password: 'dir-pass' })).toBe(1);
-  expect(await syncAccountBookings(db, gateway, { userId: admin.id, username: 'dir-user', password: 'dir-pass' })).toBe(0);
+  expect((await syncAccountBookings(db, gateway, { userId: admin.id, username: 'dir-user', password: 'dir-pass' })).imported).toBe(1);
+  expect((await syncAccountBookings(db, gateway, { userId: admin.id, username: 'dir-user', password: 'dir-pass' })).imported).toBe(0);
 
   const removed = await app.inject({ method: 'DELETE', url: `/api/admin/users/${admin.id}`, cookies });
   expect(removed.statusCode).toBe(400);

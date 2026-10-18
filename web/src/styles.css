@@ -72,6 +72,12 @@ fieldset.days button.on { border-color: var(--ball); }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--court); color: var(--line); font-size: 12px; }
 
 .slider { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 0 18px; max-width: 100%; }
+.time-slider { display: flex; gap: 6px; overflow-x: auto; max-width: 58%; }
+.time-slider button { flex: 0 0 auto; min-width: 0; min-height: 32px; padding: 4px 8px; scroll-snap-align: start; }
+.joins { display: grid; gap: 8px; margin-bottom: 12px; }
+.join { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.join strong { font-family: Fraunces, Georgia, serif; font-weight: 560; }
+.bons { margin: 0; font-family: Fraunces, serif; font-size: 42px; line-height: 1; }
 .date { scroll-snap-align: start; min-width: 84px; display: grid; background: #2a241e; border-radius: 16px; padding: 10px; }
 .date.on { background: var(--paper); color: var(--ink); }
 .date span { color: var(--muted); font-size: 12px; }
@@ -166,9 +172,37 @@ fieldset.days button.on { border-color: var(--ball); }
 .bubble.filled { background: var(--paper); color: var(--ink); }
 .bubble.guest { background: var(--ball); color: var(--ink); }
 .bubble:disabled { opacity: 0.9; }
-.bubble.front_left { top: 58.6%; left: 3.5%; }
-.bubble.front_right { top: 58.6%; right: 3.5%; }
-.bubble.back { top: 80.4%; left: 50%; transform: translateX(-50%); }
+.bubble-slot { position: absolute; width: 18%; aspect-ratio: 1; }
+.bubble-slot .bubble {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+}
+.bubble-slot.front_left { top: 58.6%; left: 3.5%; }
+.bubble-slot.front_right { top: 58.6%; right: 3.5%; }
+.bubble-slot.back { top: 80.4%; left: 50%; transform: translateX(-50%); }
+.guest-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #c83c3c;
+  color: #fff;
+  font-size: 14px;
+  line-height: 18px;
+}
 .guest-row { display: grid; gap: 8px; }
 .guest-row p, .guest-remove { color: var(--muted); font-size: 13px; }
 .guest-remove { justify-self: start; }
@@ -206,7 +240,19 @@ fieldset.days button.on { border-color: var(--ball); }
   .admin-shell { grid-template-columns: 1fr; }
   .admin-nav { display: flex; overflow-x: auto; }
   .data { display: block; overflow-x: auto; }
-  .courts { grid-template-columns: 1fr; justify-content: stretch; }
+  .courts {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    padding-bottom: 8px;
+  }
+  .courts > .squash {
+    flex: 0 0 calc(100% - 28px);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
   .diagram { max-width: none; }
   body { overflow-x: hidden; }
 }

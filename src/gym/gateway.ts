@@ -29,6 +29,7 @@ export interface GymGateway {
   book(session: GymSession, request: GymBookRequest): Promise<{ externalRef: string }>;
   cancel(session: GymSession, externalRef: string): Promise<void>;
   listBookings(session: GymSession): Promise<GymListedBooking[]>;
+  listBons(session: GymSession): Promise<number | null>;
   close(session: GymSession): Promise<void>;
 }
 

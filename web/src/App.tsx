@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, type Account, type Balance, type Dashboard, type SessionUser } from './api';
+import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type SessionUser } from './api';
 import { AdminScreen } from './Admin';
-import { SquashCourt } from './Court';
-import { courtNumber, displayCourts } from './courts';
+import { CourtCard } from './Court';
+import { courtNumber } from './courts';
 import { useI18n, type Lang } from './i18n';
 
 type Tab = 'dashboard' | 'account' | 'admin';
@@ -206,16 +206,13 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       </div>
       {!me.active && <p className="banner">{t('pausedHint')}</p>}
       {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
-      {data.occurrences.map((occurrence) => (
-        <section key={occurrence.id} className="slot">
-          <div className="slot-layout">
-          <header>
-            <div>
-              <h2>{clock(occurrence.startsAt, lang)} · {occurrence.durationMinutes} {t('min')}</h2>
-              <p>{occurrence.optedIn.length} {t('inBefore')}</p>
-            </div>
+      <div className="joins">
+        {data.occurrences.filter((occurrence) => !occurrence.courts.some((court) => court.reservationId)).map((occurrence) => (
+          <div key={occurrence.id} className="join">
+            <strong>{timeOnly(occurrence.startsAt, lang)}</strong>
             <button
               className={occurrence.myOptIn ? 'solid' : ''}
+              type="button"
               disabled={!me.active}
               onClick={() => {
                 if (!me.active) return;
@@ -227,21 +224,33 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
             >
               {occurrence.myOptIn ? t('imIn') : t('countMe')}
             </button>
-          </header>
+          </div>
+        ))}
+      </div>
+      <section className="slot">
+        <div className="slot-layout">
           <div className="courts">
-            {displayCourts(occurrence.courts).map((court) => (
-              <SquashCourt
-                key={court.courtIndex}
-                court={court}
+            {[1, 0, 3, 2].map((courtIndex) => (
+              <CourtCard
+                key={courtIndex}
+                courtIndex={courtIndex}
                 meId={me.id}
+                times={data.occurrences.flatMap((occurrence) => {
+                  const court = occurrence.courts.find((item) => item.courtIndex === courtIndex);
+                  if (!court || !courtHasPlay(court)) return [];
+                  return [{
+                    occurrenceId: occurrence.id,
+                    label: timeOnly(occurrence.startsAt, lang),
+                    court,
+                  }];
+                })}
                 onChange={() => load(data.date)}
                 onError={onError}
               />
             ))}
           </div>
-          </div>
-        </section>
-      ))}
+        </div>
+      </section>
     </main>
   );
 }
@@ -254,6 +263,8 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   const [error, setError] = useState('');
   const [playSaved, setPlaySaved] = useState(false);
   const [credsSaved, setCredsSaved] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncedNote, setSyncedNote] = useState(false);
   const [active, setActive] = useState(true);
   const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
   const [preferredTime, setPreferredTime] = useState('19:00');
@@ -281,6 +292,40 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   return (
     <main className="panel account">
       <BalanceCard title={t('yourBalance')} balance={account.balance} />
+      <section>
+        <h2>{t('bons')}</h2>
+        <p className="bons">{account.bonsRemaining == null ? t('bonsUnknown') : account.bonsRemaining}</p>
+        <button
+          className="solid"
+          type="button"
+          disabled={syncing || !account.hasGymCredentials}
+          onClick={() => {
+            setError('');
+            setSyncedNote(false);
+            setSyncing(true);
+            const before = account.syncedAt;
+            void api('/api/account/sync', { method: 'POST' })
+              .then(async () => {
+                const deadline = Date.now() + 45_000;
+                while (Date.now() < deadline) {
+                  await new Promise((resolve) => setTimeout(resolve, 2000));
+                  const next = await api<Account>('/api/account');
+                  setAccount(next);
+                  if (next.syncedAt && next.syncedAt !== before) {
+                    setSyncedNote(true);
+                    return;
+                  }
+                }
+                setError(t('syncFailed'));
+              })
+              .catch((reason: unknown) => setError(message(reason, explain)))
+              .finally(() => setSyncing(false));
+          }}
+        >
+          {syncing ? t('syncing') : t('syncNow')}
+        </button>
+        {syncedNote && <p className="notice" role="status">{t('synced')}</p>}
+      </section>
       <section>
         <h2>{t('account')}</h2>
         <p>{active ? t('activeHint') : t('pausedHint')}</p>
@@ -451,6 +496,14 @@ function weekday(iso: string, lang: Lang): string {
 
 function dayMonth(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(locale(lang), { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' }).format(new Date(`${iso}T12:00:00Z`));
+}
+
+function courtHasPlay(court: Court): boolean {
+  return Boolean(court.reservationId) || court.occupants.length > 0;
+}
+
+function timeOnly(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Madrid' }).format(new Date(iso));
 }
 
 function clock(iso: string, lang: Lang): string {

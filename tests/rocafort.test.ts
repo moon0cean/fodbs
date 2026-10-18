@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dirFlow } from '../src/gym/gateway.js';
-import { courtCode, courtIndexFromName, courtNumber, displayCourtIndexes, endClock, fase2Url, parseListedBooking, slotParts } from '../src/gym/rocafort.js';
+import { courtCode, courtIndexFromName, courtNumber, displayCourtIndexes, endClock, fase2Url, parseListedBooking, remainingBons, slotParts } from '../src/gym/rocafort.js';
 
 describe('Rocafort court flow', () => {
   it('maps the four bookable courts and the fifth listed court', () => {
@@ -44,5 +44,14 @@ describe('Rocafort court flow', () => {
       courtIndex: 1,
     });
     expect(booking?.startsAt.toISOString()).toBe('2026-10-21T16:00:00.000Z');
+  });
+
+  it('counts unused franjas and ignores an expired pack', () => {
+    expect(remainingBons([
+      ['Número', 'Pista', 'Producte', 'Franges', 'Consum', 'Caduca el'],
+      ['1', 'Pistes Squash', 'BONOS SQUASH', '40', '22', ''],
+      ['2', 'Pistes Squash', 'BONOS SQUASH', '2', '0', '04/12/2020'],
+      ['3', 'Pistes Squash', 'BONOS SQUASH', '4', '1', '01/01/2027'],
+    ], '2026-10-18')).toBe(21);
   });
 });

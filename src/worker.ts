@@ -1,7 +1,9 @@
+import { recordBons } from './bons.js';
 import { loadConfig, schedulerConfig } from './config.js';
 import { AppDatabase } from './db/index.js';
 import { dirFlow, fixtureFlow } from './gym/gateway.js';
 import { PlaywrightGymGateway } from './gym/playwright.js';
+import { SmtpMailer, UnconfiguredMailer, type Mailer } from './mail.js';
 import { runSchedulerTick, SessionPool } from './scheduler.js';
 import { syncAccountBookings } from './sync.js';
 
@@ -15,6 +17,15 @@ const gateway = new PlaywrightGymGateway({
   zone: config.zone,
 });
 const sessions = new SessionPool(gateway);
+const mailer: Mailer = config.smtpHost && config.smtpFrom
+  ? new SmtpMailer({
+      host: config.smtpHost,
+      port: config.smtpPort,
+      user: config.smtpUser,
+      pass: config.smtpPass,
+      from: config.smtpFrom,
+    })
+  : new UnconfiguredMailer();
 let running = false;
 let stopped = false;
 
@@ -36,9 +47,22 @@ async function tick(): Promise<void> {
     });
     if (gateway.canList()) {
       for (const login of await db.pendingCredentialSync()) {
-        const imported = await syncAccountBookings(db, gateway, login);
-        await db.markCredentialsSynced(login.userId, new Date());
-        log({ msg: 'bookings_synced', userId: login.userId, imported });
+        const synced = await syncAccountBookings(db, gateway, login);
+        const now = new Date();
+        if (synced.bons !== null) {
+          const contact = await db.bonsContact(login.userId);
+          if (contact) {
+            let notice = contact.notice;
+            try {
+              notice = await recordBons({ remaining: synced.bons, previous: contact.notice, email: contact.email, mailer });
+            } catch (error) {
+              log({ msg: 'bons_mail_failed', userId: login.userId, detail: error instanceof Error ? error.message : 'error' });
+            }
+            await db.saveBons(login.userId, synced.bons, notice, now);
+          }
+        }
+        await db.markCredentialsSynced(login.userId, now);
+        log({ msg: 'bookings_synced', userId: login.userId, imported: synced.imported, bons: synced.bons });
       }
     }
   } catch (error) {

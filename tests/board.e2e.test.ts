@@ -51,11 +51,20 @@ test('opting in keeps the court pair centered', async () => {
     data: { weekday: target.weekday, startTime: '20:00', durationMinutes: 60, clubCode: 'ROC' },
   });
   expect(created.ok()).toBe(true);
+  const later = await page.request.post(`${base}/api/admin/slot-rules`, {
+    data: { weekday: target.weekday, startTime: '21:00', durationMinutes: 60, clubCode: 'ROC' },
+  });
+  expect(later.ok()).toBe(true);
 
   const iso = target.toISODate() ?? '';
   await page.locator(`[data-date="${iso}"]`).click();
-  await page.getByRole('heading', { name: /20:00/ }).waitFor();
+  await page.getByRole('button', { name: 'Me apunto', exact: true }).first().waitFor();
+  expect(await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(2);
+  expect(await page.locator('.squash').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(0);
   expect(await page.locator('.court-label span').allTextContents()).toEqual(['Pista 05', 'Pista 04', 'Pista 11', 'Pista 10']);
+  const bubble = await page.locator('.bubble').first().boundingBox();
+  expect(bubble).toBeTruthy();
+  expect(Math.abs((bubble?.width ?? 0) - (bubble?.height ?? 0))).toBeLessThan(2);
 
   const panel = page.locator('main.panel');
   const slot = page.locator('.slot');
@@ -64,22 +73,56 @@ test('opting in keeps the court pair centered', async () => {
   expect(before.gap).toBeLessThan(8);
   await expectFilled(slot, layout);
 
-  const rightBefore = await page.locator('.squash').nth(1).boundingBox();
-  expect(rightBefore).toBeTruthy();
+  const beforeBoxes = await page.locator('.squash').evaluateAll((nodes) => nodes.map((node) => {
+    const box = node.getBoundingClientRect();
+    return { x: box.x, height: box.height };
+  }));
 
-  await page.getByRole('button', { name: 'Me apunto', exact: true }).click();
-  await page.locator('.bubble.filled').first().waitFor();
+  await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).first().click();
+  await page.locator('.joins').getByRole('button', { name: 'Apuntado', exact: true }).waitFor();
 
   const after = await centered(panel, layout);
   expect(after.gap).toBeLessThan(8);
   await expectFilled(slot, layout);
-  const rightAfter = await page.locator('.squash').nth(1).boundingBox();
-  expect(rightAfter).toBeTruthy();
-  expect(Math.abs((rightAfter?.x ?? 0) - (rightBefore?.x ?? 0))).toBeLessThan(2);
-  expect(Math.abs((rightAfter?.height ?? 0) - (rightBefore?.height ?? 0))).toBeLessThan(2);
-  const panelBox = await panel.boundingBox();
-  expect((rightAfter?.x ?? 0) + (rightAfter?.width ?? 0)).toBeLessThanOrEqual((panelBox?.x ?? 0) + (panelBox?.width ?? 0) + 1);
+  const afterBoxes = await page.locator('.squash').evaluateAll((nodes) => nodes.map((node) => {
+    const box = node.getBoundingClientRect();
+    return { x: box.x, height: box.height, playing: Boolean(node.querySelector('.time-slider, .bubble.filled')) };
+  }));
+  afterBoxes.forEach((box, index) => {
+    expect(Math.abs(box.x - (beforeBoxes[index]?.x ?? 0))).toBeLessThan(2);
+    if (!box.playing) expect(Math.abs(box.height - (beforeBoxes[index]?.height ?? 0))).toBeLessThan(2);
+  });
+  expect(afterBoxes.filter((box) => box.playing).length).toBe(1);
   expect(await page.locator('.bubble.filled span').first().textContent()).toBe('Admin');
+  expect(await page.locator('.joins').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(1);
+  expect(await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(1);
+  expect(await page.locator('.squash').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(0);
+  expect(await page.locator('.squash').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(0);
+  expect(await page.locator('.guest-remove').count()).toBe(0);
+  expect(await page.locator('main').textContent()).not.toContain('Obligatorio');
+});
+
+test('courts slide sideways on a phone', async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  try {
+    const courts = page.locator('.courts');
+    await courts.waitFor();
+    const metrics = await courts.evaluate((node) => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+    expect(metrics.scroll).toBeGreaterThan(metrics.client + 40);
+    const first = await page.locator('.squash').nth(0).boundingBox();
+    const second = await page.locator('.squash').nth(1).boundingBox();
+    if (!first || !second) throw new Error('court layout is not visible');
+    expect(second.x).toBeGreaterThan(first.x + first.width - 40);
+    await page.locator('.squash').nth(3).scrollIntoViewIfNeeded();
+    const last = await page.locator('.squash').nth(3).boundingBox();
+    const view = page.viewportSize();
+    if (!last || !view) throw new Error('court layout is not visible');
+    expect(last.x).toBeGreaterThanOrEqual(0);
+    expect(last.x + last.width).toBeLessThanOrEqual(view.width + 1);
+    expect(await page.locator('.court-label span').nth(3).textContent()).toBe('Pista 10');
+  } finally {
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
 });
 
 test('the account page pauses and restores the signed-in member', async () => {
