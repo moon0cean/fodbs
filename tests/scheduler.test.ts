@@ -88,6 +88,69 @@ describe('scheduler', () => {
     await sessions.closeAll();
   });
 
+  it('books thirty minutes later on another court when the planned time is taken', async () => {
+    const store = primedStore();
+    store.optedIn.set('occ', ['p1']);
+    store.emails.set('p1', 'p1@example.com');
+    const gateway = new FakeGymGateway();
+    const later = new Date(START.getTime() + 30 * 60_000);
+    const earlier = new Date(START.getTime() - 30 * 60_000);
+    for (const courtIndex of [0, 1, 2, 3]) {
+      gateway.unavailable.add(`${courtIndex}|${START.toISOString()}`);
+      gateway.unavailable.add(`${courtIndex}|${earlier.toISOString()}`);
+    }
+    for (const courtIndex of [0, 2, 3]) gateway.unavailable.add(`${courtIndex}|${later.toISOString()}`);
+    const notices: string[][] = [];
+    const sessions = new SessionPool(gateway);
+    await runSchedulerTick({
+      now: OPEN,
+      store,
+      gateway,
+      sessions,
+      config: testConfig(),
+      log: () => undefined,
+      notifyMiss: async ({ emails }) => {
+        notices.push(emails);
+      },
+    });
+    expect(gateway.bookings).toEqual([
+      expect.objectContaining({ courtIndex: 1, startsAt: later.toISOString() }),
+    ]);
+    expect(store.reservations[0]?.startsAt.toISOString()).toBe(later.toISOString());
+    expect(notices).toEqual([]);
+    await sessions.closeAll();
+  });
+
+  it('emails once and stores no reservation when every nearby court is taken', async () => {
+    const store = primedStore();
+    store.optedIn.set('occ', ['p1']);
+    store.emails.set('p1', 'p1@example.com');
+    const gateway = new FakeGymGateway();
+    for (const offset of [0, -30, 30]) {
+      const startsAt = new Date(START.getTime() + offset * 60_000);
+      for (const courtIndex of [0, 1, 2, 3]) gateway.unavailable.add(`${courtIndex}|${startsAt.toISOString()}`);
+    }
+    const notices: string[][] = [];
+    const sessions = new SessionPool(gateway);
+    const tick = (now: Date) => runSchedulerTick({
+      now,
+      store,
+      gateway,
+      sessions,
+      config: testConfig(),
+      log: () => undefined,
+      notifyMiss: async ({ emails }) => {
+        notices.push(emails);
+      },
+    });
+    await tick(OPEN);
+    await tick(new Date(OPEN.getTime() + 61_000));
+    expect(gateway.bookings).toHaveLength(0);
+    expect(store.reservations).toHaveLength(0);
+    expect(notices).toEqual([['p1@example.com']]);
+    await sessions.closeAll();
+  });
+
   it('cancels an empty court inside the window and leaves it alone inside the penalty guard', async () => {
     const store = new MemoryStore(60_000);
     const startsAt = new Date('2026-10-24T17:00:00.000Z');

@@ -101,6 +101,7 @@ export const reservations = pgTable(
     chargedUserId: text('charged_user_id').notNull().references(() => users.id),
     externalRef: text('external_ref').notNull(),
     status: text('status').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true, mode: 'date' }),
     bookedAt: timestamp('booked_at', { withTimezone: true, mode: 'date' }).notNull(),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'date' }),
     hostUserId: text('host_user_id'),

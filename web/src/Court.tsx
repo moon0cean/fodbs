@@ -27,7 +27,7 @@ export function CourtCard({
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState('');
   const current = times.find((time) => time.occurrenceId === selectedId) ?? times[0];
-  const court = current?.court ?? { courtIndex, reservationId: null, status: 'open' as const, occupants: [] };
+  const court = current?.court ?? { courtIndex, reservationId: null, status: 'open' as const, startsAt: null, occupants: [] };
 
   return (
     <article className="squash">

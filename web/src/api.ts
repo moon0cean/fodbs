@@ -43,6 +43,7 @@ export type Court = {
   courtIndex: number;
   reservationId: string | null;
   status: 'open' | 'pending' | 'skipped' | 'held' | 'cancelled' | 'played';
+  startsAt: string | null;
   occupants: Occupant[];
 };
 

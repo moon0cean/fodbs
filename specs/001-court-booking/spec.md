@@ -105,6 +105,8 @@ that stays empty inside the cancel window.
 5. **Given** a held court with zero seats and the clock inside the cancel window, **When** the tick runs, **Then** the gateway cancel is called and the reservation becomes cancelled.
 6. **Given** the clock inside the last penalty-guard minutes, **When** the court is still empty, **Then** the worker does not call cancel.
 7. **Given** a portal error, **When** the tick finishes, **Then** the HTTP server is unaffected and the grab is retried on a later tick.
+8. **Given** the planned time is unavailable on every court, **When** another court is free 30 minutes earlier or later the same day, **Then** that court is booked at the free time and the board shows that time.
+9. **Given** every court is unavailable at the planned time and 30 minutes either side, **When** the sweep finishes, **Then** the opted-in members are emailed once and no court is shown as booked.
 
 ---
 
@@ -152,7 +154,8 @@ confirm those admin routes are rejected.
 - **FR-009**: Joining a second court of the same slot MUST move the member off the first court.
 - **FR-010**: Booked minutes MUST be the duration of non-cancelled reservations charged to that gym account. Played minutes MUST be the duration of non-cancelled reservations on which that member sits. The group balance MUST be the sum of those figures.
 - **FR-011**: At the horizon opening the worker MUST freeze the court count at `min(maxCourts, ceil(optedIn / maxPerCourt))` using who was in at that instant, defaulting to 4 courts and 3 players.
-- **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The default horizon is 7 days and the default pre-login is 2 minutes.
+- **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
+- **FR-021**: A grab MUST try every court at the planned time, then the same search 30 minutes earlier and 30 minutes later, staying on the same Madrid day. The reservation MUST record the time that was actually booked, and the board MUST show a court time only for a real reservation. When every try is unavailable, FODBS MUST email the opted-in members once and MUST NOT present any court as booked.
 - **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 3), the worker MUST choose the lowest `bookedMinutes - playedMinutes`.
 - **FR-014**: A grab MUST be idempotent per occurrence and court index.
 - **FR-015**: The worker MUST cancel a held court with zero seats when the time is at or after `start - cancelLeadMinutes` and still before `start - penaltyGuardMinutes`. Defaults are 180 and 20 minutes.

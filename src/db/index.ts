@@ -358,6 +358,7 @@ export class AppDatabase implements SchedulerStore {
         courtIndex,
         chargedUserId: userId,
         externalRef: booking.externalRef,
+        startsAt: booking.startsAt,
         status: endsAt <= now.getTime() ? 'played' : 'held',
         bookedAt: now,
         hostUserId: userId,
@@ -514,6 +515,7 @@ export class AppDatabase implements SchedulerStore {
                 id: row.id,
                 courtIndex: row.courtIndex,
                 status: row.status as 'held' | 'cancelled' | 'played',
+                startsAt: row.startsAt ?? occ.startsAt,
                 occupants: seatRows
                   .filter((seat) => seat.reservationId === row.id)
                   .map((seat) => ({
@@ -851,6 +853,33 @@ export class AppDatabase implements SchedulerStore {
     return current?.courtsTargeted ?? courtsTargeted;
   }
 
+  async missRecipients(occurrenceId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(availability)
+      .innerJoin(users, eq(users.id, availability.userId))
+      .where(and(eq(availability.occurrenceId, occurrenceId), eq(availability.declined, false), eq(users.active, true)));
+    return [...new Set(rows.map((row) => row.email))];
+  }
+
+  async claimMiss(occurrenceId: string): Promise<boolean> {
+    const key = `miss:${occurrenceId}`;
+    const rows = await this.db.select({ key: bookingAttempts.idempotencyKey }).from(bookingAttempts).where(eq(bookingAttempts.idempotencyKey, key)).limit(1);
+    if (rows.length > 0) return false;
+    await this.db.insert(bookingAttempts).values({
+      idempotencyKey: key,
+      kind: 'miss',
+      status: 'succeeded',
+      detail: '',
+      updatedAt: new Date(),
+    });
+    return true;
+  }
+
+  async releaseMiss(occurrenceId: string): Promise<void> {
+    await this.db.delete(bookingAttempts).where(eq(bookingAttempts.idempotencyKey, `miss:${occurrenceId}`));
+  }
+
   async reservationCourtIndexes(occurrenceId: string): Promise<Set<number>> {
     const rows = await this.db.select({ courtIndex: reservations.courtIndex }).from(reservations).where(eq(reservations.occurrenceId, occurrenceId));
     return new Set(rows.map((row) => row.courtIndex));
@@ -886,6 +915,7 @@ export class AppDatabase implements SchedulerStore {
     courtIndex: number;
     chargedUserId: string;
     externalRef: string;
+    startsAt: Date;
     now: Date;
   }): Promise<void> {
     await this.db.insert(reservations).values({
@@ -894,6 +924,7 @@ export class AppDatabase implements SchedulerStore {
       courtIndex: input.courtIndex,
       chargedUserId: input.chargedUserId,
       externalRef: input.externalRef,
+      startsAt: input.startsAt,
       status: 'held',
       bookedAt: input.now,
     });
@@ -913,7 +944,8 @@ export class AppDatabase implements SchedulerStore {
         id: reservations.id,
         chargedUserId: reservations.chargedUserId,
         externalRef: reservations.externalRef,
-        startsAt: occurrences.startsAt,
+        startsAt: reservations.startsAt,
+        plannedStart: occurrences.startsAt,
         effective: reservations.effective,
       })
       .from(reservations)
@@ -926,7 +958,7 @@ export class AppDatabase implements SchedulerStore {
         id: row.id,
         chargedUserId: row.chargedUserId,
         externalRef: row.externalRef,
-        startsAt: row.startsAt,
+        startsAt: row.startsAt ?? row.plannedStart,
         frontLeft: positions.has('front_left'),
         frontRight: positions.has('front_right'),
         effective: row.effective,
@@ -962,7 +994,8 @@ export class AppDatabase implements SchedulerStore {
         hostUserId: reservations.hostUserId,
         status: reservations.status,
         courtIndex: reservations.courtIndex,
-        startsAt: occurrences.startsAt,
+        startsAt: reservations.startsAt,
+        plannedStart: occurrences.startsAt,
         durationMinutes: occurrences.durationMinutes,
         clubCode: occurrences.clubCode,
       })
@@ -972,7 +1005,14 @@ export class AppDatabase implements SchedulerStore {
     return reservationRows.map((row) => {
       const onCourt = seatRows.filter((seat) => seat.reservationId === row.id);
       return {
-        ...row,
+        id: row.id,
+        chargedUserId: row.chargedUserId,
+        hostUserId: row.hostUserId,
+        status: row.status,
+        courtIndex: row.courtIndex,
+        startsAt: row.startsAt ?? row.plannedStart,
+        durationMinutes: row.durationMinutes,
+        clubCode: row.clubCode,
         memberIds: onCourt.flatMap((seat) => (seat.userId ? [seat.userId] : [])),
         guestCount: onCourt.filter((seat) => !seat.userId).length,
       };

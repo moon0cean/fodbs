@@ -1,7 +1,9 @@
 import { DateTime } from 'luxon';
 import {
+  alternateSlots,
   courtsToBook,
   horizonOpenAt,
+  madridDate,
   notePick,
   partyDivisor,
   pickAccount,
@@ -42,6 +44,9 @@ export interface SchedulerStore {
   credentials(userId: string): Promise<{ username: string; password: string } | null>;
   freezeCourts(occurrenceId: string, courtsTargeted: number, now: Date): Promise<number>;
   reservationCourtIndexes(occurrenceId: string): Promise<Set<number>>;
+  missRecipients(occurrenceId: string): Promise<string[]>;
+  claimMiss(occurrenceId: string): Promise<boolean>;
+  releaseMiss(occurrenceId: string): Promise<void>;
   claimAttempt(key: string, kind: 'grab' | 'cancel', now: Date): Promise<'claimed' | 'done' | 'busy'>;
   finishAttempt(key: string, status: 'succeeded' | 'failed', detail: string, now: Date): Promise<void>;
   createReservation(input: {
@@ -49,6 +54,7 @@ export interface SchedulerStore {
     courtIndex: number;
     chargedUserId: string;
     externalRef: string;
+    startsAt: Date;
     now: Date;
   }): Promise<void>;
   heldOpen(now: Date): Promise<{
@@ -92,6 +98,7 @@ export class SessionPool {
 }
 
 const MINUTE = 60_000;
+const UNAVAILABLE = new Set(['slot_unavailable', 'duration_unavailable', 'court_unavailable', 'bons_unavailable']);
 
 export async function runSchedulerTick(input: {
   now: Date;
@@ -100,8 +107,9 @@ export async function runSchedulerTick(input: {
   sessions: SessionPool;
   config: SchedulerConfig;
   log: (event: Record<string, unknown>) => void;
+  notifyMiss?: (input: { when: string; emails: string[] }) => Promise<void>;
 }): Promise<void> {
-  const { now, store, gateway, sessions, config, log } = input;
+  const { now, store, gateway, sessions, config, log, notifyMiss } = input;
   await store.markPlayed(now);
   await store.ensureOccurrences(now);
   if (!gateway.ready()) {
@@ -154,15 +162,27 @@ export async function runSchedulerTick(input: {
     }
     if (targeted <= 0) continue;
     const taken = await store.reservationCourtIndexes(occurrence.id);
-    for (let courtIndex = 0; courtIndex < targeted; courtIndex += 1) {
-      if (taken.has(courtIndex)) continue;
-      const account = pickAccount(await store.candidates(occurrence.startsAt, now), limits);
+    let secured = taken.size;
+    let hardMiss = false;
+    let pendingRetry = false;
+    let transient = false;
+    const day = madridDate(occurrence.startsAt, config.zone);
+    for (const slot of alternateSlots(config.maxCourts)) {
+      if (secured >= targeted || transient) break;
+      if (taken.has(slot.courtIndex)) continue;
+      const startsAt = new Date(occurrence.startsAt.getTime() + slot.offsetMinutes * MINUTE);
+      if (startsAt.getTime() <= now.getTime() || madridDate(startsAt, config.zone) !== day) continue;
+      const account = pickAccount(await store.candidates(startsAt, now), limits);
       if (!account) {
-        log({ msg: 'no_eligible_account', occurrenceId: occurrence.id, courtIndex });
+        log({ msg: 'no_eligible_account', occurrenceId: occurrence.id, courtIndex: slot.courtIndex });
+        break;
+      }
+      const key = `grab:${occurrence.id}:${slot.offsetMinutes}:${slot.courtIndex}`;
+      const claim = await store.claimAttempt(key, 'grab', now);
+      if (claim === 'busy') {
+        pendingRetry = true;
         continue;
       }
-      const key = `grab:${occurrence.id}:${courtIndex}`;
-      const claim = await store.claimAttempt(key, 'grab', now);
       if (claim !== 'claimed') continue;
       const creds = await store.credentials(account.userId);
       if (!creds) {
@@ -174,36 +194,55 @@ export async function runSchedulerTick(input: {
         const session = await sessions.get(account.userId, creds);
         const request: GymBookRequest = {
           clubCode: occurrence.clubCode,
-          courtIndex,
-          startsAt: occurrence.startsAt,
+          courtIndex: slot.courtIndex,
+          startsAt,
           durationMinutes: occurrence.durationMinutes,
         };
         const booked = await gateway.book(session, request);
         try {
           await store.createReservation({
             occurrenceId: occurrence.id,
-            courtIndex,
+            courtIndex: slot.courtIndex,
             chargedUserId: account.userId,
             externalRef: booked.externalRef,
+            startsAt,
             now,
           });
         } catch (error) {
           await gateway.cancel(session, booked.externalRef).catch(() => undefined);
           throw error;
         }
-        taken.add(courtIndex);
+        taken.add(slot.courtIndex);
+        secured += 1;
         await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
         log({
           msg: 'booked',
           occurrenceId: occurrence.id,
-          courtIndex,
+          courtIndex: slot.courtIndex,
+          offsetMinutes: slot.offsetMinutes,
           userId: account.userId,
           externalRef: booked.externalRef,
         });
       } catch (error) {
         const detail = redactSecrets(errorText(error), [creds.username, creds.password]);
         await store.finishAttempt(key, 'failed', detail, now);
-        log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex, userId: account.userId, detail });
+        if (UNAVAILABLE.has(detail)) hardMiss = true;
+        else transient = true;
+        log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex: slot.courtIndex, offsetMinutes: slot.offsetMinutes, userId: account.userId, detail });
+      }
+    }
+    if (secured === 0 && hardMiss && !pendingRetry && !transient) {
+      const claimed = await store.claimMiss(occurrence.id);
+      if (!claimed || !notifyMiss) continue;
+      try {
+        const emails = await store.missRecipients(occurrence.id);
+        if (emails.length === 0) continue;
+        const when = DateTime.fromJSDate(occurrence.startsAt, { zone: config.zone }).setLocale('es').toFormat("cccc d LLL 'a las' HH:mm");
+        await notifyMiss({ when, emails });
+        log({ msg: 'booking_missed', occurrenceId: occurrence.id, emails: emails.length });
+      } catch (error) {
+        await store.releaseMiss(occurrence.id);
+        log({ msg: 'booking_miss_mail_failed', occurrenceId: occurrence.id, detail: error instanceof Error ? error.message : 'error' });
       }
     }
   }

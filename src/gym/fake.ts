@@ -8,6 +8,7 @@ export class FakeGymGateway implements GymGateway {
   listed: GymListedBooking[] = [];
   failLogins = new Set<string>();
   failBooks = false;
+  unavailable = new Set<string>();
   bons: number | null = null;
 
   ready(): boolean {
@@ -25,6 +26,7 @@ export class FakeGymGateway implements GymGateway {
 
   async book(session: GymSession, request: GymBookRequest): Promise<{ externalRef: string }> {
     if (this.failBooks) throw new Error('portal_rejected');
+    if (this.unavailable.has(`${request.courtIndex}|${request.startsAt.toISOString()}`)) throw new Error('slot_unavailable');
     const externalRef = `fake-${request.courtIndex}-${request.startsAt.toISOString()}-${this.bookings.length}`;
     this.bookings.push({
       externalRef,
