@@ -39,8 +39,9 @@ export type BalanceReservation = {
 };
 
 export type MinutesBalance = {
-  effectiveBookedMinutes: number;
+  bookedMinutes: number;
   weekBookedMinutes: number;
+  nextWeekBookedMinutes: number;
   playedMinutes: number;
   differenceMinutes: number;
 };
@@ -130,8 +131,10 @@ export function balanceMinutes(reservations: BalanceReservation[], now: Date, zo
   const local = DateTime.fromJSDate(now, { zone });
   const weekStart = local.startOf('day').minus({ days: local.weekday - 1 });
   const weekEnd = weekStart.plus({ weeks: 1 });
-  let effectiveBookedMinutes = 0;
+  const nextWeekEnd = weekEnd.plus({ weeks: 1 });
+  let bookedMinutes = 0;
   let weekBookedMinutes = 0;
+  let nextWeekBookedMinutes = 0;
   let playedMinutes = 0;
   let settledBookedMinutes = 0;
   for (const reservation of reservations) {
@@ -140,18 +143,20 @@ export function balanceMinutes(reservations: BalanceReservation[], now: Date, zo
     const chargedHere = !userId || payer === userId;
     const started = reservation.startsAt.getTime() <= now.getTime();
     const start = DateTime.fromJSDate(reservation.startsAt, { zone });
-    if (chargedHere && reservation.effective) {
-      effectiveBookedMinutes += reservation.durationMinutes;
+    if (chargedHere) {
+      bookedMinutes += reservation.durationMinutes;
       if (started) settledBookedMinutes += reservation.durationMinutes;
+      else if (start >= weekStart && start < weekEnd) weekBookedMinutes += reservation.durationMinutes;
+      else if (start >= weekEnd && start < nextWeekEnd) nextWeekBookedMinutes += reservation.durationMinutes;
     }
-    if (chargedHere && !started && start >= weekStart && start < weekEnd) weekBookedMinutes += reservation.durationMinutes;
     if (!started) continue;
     if (!userId) playedMinutes += reservation.durationMinutes * reservation.memberIds.length;
     else if (reservation.memberIds.includes(userId)) playedMinutes += reservation.durationMinutes;
   }
   return {
-    effectiveBookedMinutes,
+    bookedMinutes,
     weekBookedMinutes,
+    nextWeekBookedMinutes,
     playedMinutes,
     differenceMinutes: playedMinutes - settledBookedMinutes,
   };

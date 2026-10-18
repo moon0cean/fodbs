@@ -28,8 +28,9 @@ export type SessionUser = {
 };
 
 export type Balance = {
-  effectiveBookedMinutes: number;
+  bookedMinutes: number;
   weekBookedMinutes: number;
+  nextWeekBookedMinutes: number;
   playedMinutes: number;
   differenceMinutes: number;
 };
