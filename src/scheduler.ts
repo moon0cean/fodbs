@@ -44,6 +44,7 @@ export interface SchedulerStore {
   credentials(userId: string): Promise<{ username: string; password: string } | null>;
   freezeCourts(occurrenceId: string, courtsTargeted: number, now: Date): Promise<number>;
   reservationCourtIndexes(occurrenceId: string): Promise<Set<number>>;
+  reservationsAt(startsAt: Date, clubCode: string): Promise<number>;
   missRecipients(occurrenceId: string): Promise<string[]>;
   claimMiss(occurrenceId: string): Promise<boolean>;
   releaseMiss(occurrenceId: string): Promise<void>;
@@ -161,6 +162,7 @@ export async function runSchedulerTick(input: {
       targeted = await store.freezeCourts(occurrence.id, frozen, now);
     }
     if (targeted <= 0) continue;
+    if (await store.reservationsAt(occurrence.startsAt, occurrence.clubCode) >= targeted) continue;
     const taken = await store.reservationCourtIndexes(occurrence.id);
     let secured = taken.size;
     let hardMiss = false;

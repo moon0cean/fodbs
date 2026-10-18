@@ -192,6 +192,31 @@ describe('balances and seats', () => {
       'skipped',
     ]);
   });
+
+  it('keeps a booked court 11 from painting the player on court 04', () => {
+    const courts = buildCourts({
+      maxCourts: 4,
+      courtsTargeted: 1,
+      reservations: [{
+        id: 'r',
+        courtIndex: 3,
+        status: 'held',
+        startsAt: new Date('2026-10-19T16:00:00.000Z'),
+        occupants: [{ id: 's', position: 'front_right', userId: 'jon', guestName: null, displayName: 'Jonatan' }],
+      }],
+    });
+    expect(courts.map((court) => court.status)).toEqual(['skipped', 'skipped', 'skipped', 'held']);
+    const assigned = assignOptedIn({
+      courts,
+      courtsTargeted: 1,
+      players: [
+        { id: 'jon', displayName: 'Jonatan', partySize: 3 },
+        { id: 'ana', displayName: 'Ana', partySize: 3 },
+      ],
+    });
+    expect(assigned[0]?.occupants).toEqual([]);
+    expect(assigned[3]?.occupants.map((occupant) => occupant.displayName)).toEqual(['Jonatan', 'Ana']);
+  });
 });
 
 describe('occurrenceStarts', () => {

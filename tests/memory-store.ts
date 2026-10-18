@@ -74,6 +74,11 @@ export class MemoryStore implements SchedulerStore {
     return occurrence.courtsTargeted;
   }
 
+  async reservationsAt(startsAt: Date, clubCode: string): Promise<number> {
+    const ids = new Set([...this.occurrences.values()].filter((item) => item.startsAt.getTime() === startsAt.getTime() && item.clubCode === clubCode).map((item) => item.id));
+    return this.reservations.filter((reservation) => ids.has(reservation.occurrenceId) && reservation.status !== 'cancelled').length;
+  }
+
   async reservationCourtIndexes(occurrenceId: string): Promise<Set<number>> {
     return new Set(this.reservations.filter((reservation) => reservation.occurrenceId === occurrenceId && reservation.status !== 'cancelled').map((reservation) => reservation.courtIndex));
   }

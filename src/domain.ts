@@ -239,6 +239,8 @@ export function buildCourts(input: {
   }[];
 }): CourtView[] {
   const courts: CourtView[] = [];
+  const booked = input.reservations.length;
+  let pendingLeft = input.courtsTargeted === null ? 0 : Math.max(0, input.courtsTargeted - booked);
   for (let courtIndex = 0; courtIndex < input.maxCourts; courtIndex += 1) {
     const reservation = input.reservations.find((item) => item.courtIndex === courtIndex);
     if (reservation) {
@@ -253,7 +255,8 @@ export function buildCourts(input: {
     }
     let status: CourtView['status'] = 'open';
     if (input.courtsTargeted !== null) {
-      status = courtIndex < input.courtsTargeted ? 'pending' : 'skipped';
+      status = pendingLeft > 0 ? 'pending' : 'skipped';
+      if (status === 'pending') pendingLeft -= 1;
     }
     courts.push({ courtIndex, reservationId: null, status, startsAt: null, occupants: [] });
   }
@@ -271,7 +274,8 @@ export function assignOptedIn(input: {
   const seated = new Set(input.courts.flatMap((court) => court.occupants.flatMap((occupant) => (occupant.userId ? [occupant.userId] : []))));
   const waiting = input.players.filter((player) => !seated.has(player.id));
   return input.courts.map((court) => {
-    if (court.courtIndex >= active || court.status === 'cancelled' || court.status === 'played' || court.status === 'skipped') return court;
+    const holdsBooking = Boolean(court.reservationId);
+    if ((!holdsBooking && court.courtIndex >= active) || court.status === 'cancelled' || court.status === 'played' || court.status === 'skipped') return court;
     const occupants = [...court.occupants];
     for (const position of spots) {
       if (occupants.some((occupant) => occupant.position === position)) continue;
