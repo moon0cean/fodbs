@@ -774,10 +774,50 @@ export class AppDatabase implements SchedulerStore {
         active: rule.active,
       })),
     });
+    const existing = await this.db.select().from(occurrences);
     for (const row of rows) {
-      await this.db.insert(occurrences).values({ id: randomUUID(), ...row }).onConflictDoNothing();
+      const same = existing.filter((item) => item.startsAt.getTime() === row.startsAt.getTime() && item.durationMinutes === row.durationMinutes && item.clubCode === row.clubCode);
+      const keeper = same.find((item) => item.slotRuleId === row.slotRuleId) ?? same.find((item) => item.slotRuleId === null) ?? same[0];
+      if (!keeper) {
+        const id = randomUUID();
+        await this.db.insert(occurrences).values({ id, ...row }).onConflictDoNothing();
+        existing.push({ id, slotRuleId: row.slotRuleId, startsAt: row.startsAt, durationMinutes: row.durationMinutes, clubCode: row.clubCode, courtsTargeted: null, grabbedAt: null });
+        continue;
+      }
+      if (keeper.slotRuleId === null && row.slotRuleId) {
+        await this.db.update(occurrences).set({ slotRuleId: row.slotRuleId }).where(eq(occurrences.id, keeper.id));
+        keeper.slotRuleId = row.slotRuleId;
+      }
+      for (const extra of same) {
+        if (extra.id === keeper.id) continue;
+        const moved = await this.moveOccurrence(extra.id, keeper.id);
+        if (moved) {
+          const index = existing.findIndex((item) => item.id === extra.id);
+          if (index >= 0) existing.splice(index, 1);
+        }
+      }
     }
     await this.syncPreferences(now);
+  }
+
+  private async moveOccurrence(fromId: string, toId: string): Promise<boolean> {
+    const taken = await this.db.select({ courtIndex: reservations.courtIndex }).from(reservations).where(eq(reservations.occurrenceId, toId));
+    const used = new Set(taken.map((row) => row.courtIndex));
+    const moving = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, fromId));
+    for (const reservation of moving) {
+      if (used.has(reservation.courtIndex)) continue;
+      await this.db.update(reservations).set({ occurrenceId: toId }).where(eq(reservations.id, reservation.id));
+      used.add(reservation.courtIndex);
+    }
+    const avail = await this.db.select().from(availability).where(eq(availability.occurrenceId, fromId));
+    for (const row of avail) {
+      await this.db.insert(availability).values({ ...row, occurrenceId: toId }).onConflictDoNothing();
+    }
+    await this.db.delete(availability).where(eq(availability.occurrenceId, fromId));
+    const left = await this.db.select({ id: reservations.id }).from(reservations).where(eq(reservations.occurrenceId, fromId));
+    if (left.length > 0) return false;
+    await this.db.delete(occurrences).where(eq(occurrences.id, fromId));
+    return true;
   }
 
   async markPlayed(now: Date): Promise<void> {
@@ -878,6 +918,15 @@ export class AppDatabase implements SchedulerStore {
 
   async releaseMiss(occurrenceId: string): Promise<void> {
     await this.db.delete(bookingAttempts).where(eq(bookingAttempts.idempotencyKey, `miss:${occurrenceId}`));
+  }
+
+  async reservationsAt(startsAt: Date, clubCode: string): Promise<number> {
+    const rows = await this.db
+      .select({ id: reservations.id })
+      .from(reservations)
+      .innerJoin(occurrences, eq(occurrences.id, reservations.occurrenceId))
+      .where(and(eq(occurrences.startsAt, startsAt), eq(occurrences.clubCode, clubCode), ne(reservations.status, 'cancelled')));
+    return rows.length;
   }
 
   async reservationCourtIndexes(occurrenceId: string): Promise<Set<number>> {

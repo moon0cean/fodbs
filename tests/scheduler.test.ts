@@ -151,6 +151,41 @@ describe('scheduler', () => {
     await sessions.closeAll();
   });
 
+  it('does not grab another court when that time is already booked', async () => {
+    const store = primedStore();
+    store.occurrences.get('occ')!.courtsTargeted = 1;
+    store.occurrences.set('imported', {
+      id: 'imported',
+      startsAt: START,
+      durationMinutes: 60,
+      clubCode: 'ROC',
+      courtsTargeted: 1,
+    });
+    store.reservations.push({
+      id: 'already',
+      occurrenceId: 'imported',
+      courtIndex: 3,
+      chargedUserId: 'a',
+      externalRef: '126380',
+      status: 'held',
+      startsAt: START,
+      durationMinutes: 60,
+      frontLeft: false,
+      frontRight: true,
+      effective: true,
+    });
+    const gateway = new FakeGymGateway();
+    await runSchedulerTick({
+      now: OPEN,
+      store,
+      gateway,
+      sessions: new SessionPool(gateway),
+      config: testConfig(),
+      log: () => undefined,
+    });
+    expect(gateway.bookings).toHaveLength(0);
+  });
+
   it('cancels an empty court inside the window and leaves it alone inside the penalty guard', async () => {
     const store = new MemoryStore(60_000);
     const startsAt = new Date('2026-10-24T17:00:00.000Z');
