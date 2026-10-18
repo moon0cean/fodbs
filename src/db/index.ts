@@ -17,6 +17,7 @@ import {
   removeGuest,
   windowDates,
   type AccountCandidate,
+  type MinutesBalance,
   type ShapedReservation,
   type Spot,
 } from '../domain.js';
@@ -403,10 +404,10 @@ export class AppDatabase implements SchedulerStore {
       });
   }
 
-  async accountView(userId: string): Promise<{
+  async accountView(userId: string, now: Date): Promise<{
     gymUsername: string | null;
     hasGymCredentials: boolean;
-    balance: { bookedMinutes: number; playedMinutes: number };
+    balance: MinutesBalance;
     preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
     bonsRemaining: number | null;
     bonsCheckedAt: Date | null;
@@ -439,7 +440,7 @@ export class AppDatabase implements SchedulerStore {
     return {
       gymUsername,
       hasGymCredentials: Boolean(creds[0]),
-      balance: balanceMinutes(rows, userId),
+      balance: balanceMinutes(rows, now, this.config.zone, userId),
       preferences: await this.readPreferences(userId),
       bonsRemaining: creds[0]?.bonsRemaining ?? null,
       bonsCheckedAt: creds[0]?.bonsCheckedAt ?? null,
@@ -458,7 +459,7 @@ export class AppDatabase implements SchedulerStore {
       .map((person) => ({
         id: person.id,
         displayName: person.displayName,
-        ...balanceMinutes(rows, person.id),
+        ...balanceMinutes(rows, now, this.config.zone, person.id),
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
     const day = DateTime.fromISO(date, { zone: this.config.zone }).startOf('day');
@@ -478,7 +479,7 @@ export class AppDatabase implements SchedulerStore {
     const me = people.find((person) => person.id === userId) ?? (await this.requireUser(userId));
     return {
       activeUsers,
-      globalBalance: balanceMinutes(rows),
+      globalBalance: balanceMinutes(rows, now, this.config.zone),
       me: {
         id: me.id,
         displayName: me.displayName,
@@ -866,7 +867,7 @@ export class AppDatabase implements SchedulerStore {
           if (madridDate(row.startsAt, this.config.zone) === day) bookingsOnDay += 1;
           if (row.status === 'held' && row.startsAt.getTime() > now.getTime()) simultaneousHeld += 1;
         }
-        if (row.memberIds.includes(user.id)) playedMinutes += row.durationMinutes;
+        if (row.startsAt.getTime() <= now.getTime() && row.memberIds.includes(user.id)) playedMinutes += row.durationMinutes;
       }
       return { userId: user.id, bookedMinutes, playedMinutes, bookingsOnDay, simultaneousHeld };
     });
@@ -1042,6 +1043,7 @@ export class AppDatabase implements SchedulerStore {
         chargedUserId: reservations.chargedUserId,
         hostUserId: reservations.hostUserId,
         status: reservations.status,
+        effective: reservations.effective,
         courtIndex: reservations.courtIndex,
         startsAt: reservations.startsAt,
         plannedStart: occurrences.startsAt,
@@ -1058,6 +1060,7 @@ export class AppDatabase implements SchedulerStore {
         chargedUserId: row.chargedUserId,
         hostUserId: row.hostUserId,
         status: row.status,
+        effective: row.effective,
         courtIndex: row.courtIndex,
         startsAt: row.startsAt ?? row.plannedStart,
         durationMinutes: row.durationMinutes,

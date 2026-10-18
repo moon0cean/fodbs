@@ -68,13 +68,14 @@ played minutes with the reservation rows.
 
 **Acceptance Scenarios**:
 
-1. **Given** active members, **When** a member opens the dashboard, **Then** they see those members, the group booked minutes, and the group played minutes.
+1. **Given** active members, **When** a member opens the dashboard, **Then** they see those members and the group balance: effective booked hours, hours booked this week that have not started, hours played, and the difference.
 2. **Given** a date inside the horizon, **When** the member selects it on the slider, **Then** the slots for that date and a 2x2 of courts are shown. The slider starts on the current Madrid day and lists no earlier day.
 3. **Given** a held court with two seats, **When** the member joins, **Then** they are seated.
 4. **Given** a held court with three seats, **When** another member joins it, **Then** the join is rejected.
 5. **Given** a member already seated on another court of the same slot, **When** they join a different held court, **Then** they leave the first court and sit on the second.
-6. **Given** a member, **When** they open the account page, **Then** they see their booked minutes, played minutes, and the reservations charged to their gym account.
-7. **Given** a cancelled reservation, **When** balances are computed, **Then** it adds neither booked nor played minutes.
+6. **Given** a member, **When** they open the account page or the dashboard, **Then** they see effective booked hours, hours booked this week that have not started, hours played, the difference, and the reservations charged to their gym account.
+7. **Given** a cancelled reservation, **When** balances are computed, **Then** it adds nothing.
+8. **Given** a future effective court the member sits on, and another future court charged to them that is not effective, **When** balances are computed, **Then** only the effective court counts as booked, neither counts as played, and the difference stays unchanged.
 
 ---
 
@@ -83,7 +84,8 @@ played minutes with the reservation rows.
 Admins define a weekly slot. Members who are in before the horizon opens are
 counted. At `start - horizon` the worker books `min(4, ceil(optedIn / 3))`
 courts on DiR. The account used is the eligible member with the lowest
-`bookedMinutes - playedMinutes` who is still under the gym quota. Sessions
+charge minus play who is still under the gym quota. The charge includes
+future courts. Play counts only after the reservation has started. Sessions
 are opened shortly before that instant. A held court with nobody seated is
 cancelled after the cancel lead and before the penalty guard. The same grab
 does not book a court twice.
@@ -153,12 +155,12 @@ confirm those admin routes are rejected.
 - **FR-007**: The dashboard MUST list active members, the group booked-versus-played balance, a date slider that starts on the current Madrid day and covers the horizon, and four courts in a 2x2. Earlier days MUST NOT appear on that slider.
 - **FR-008**: A member MUST be able to mark themselves in or out of a future slot, and MUST be able to add or remove only themselves on a held court, with a maximum of three players.
 - **FR-009**: Joining a second court of the same slot MUST move the member off the first court.
-- **FR-010**: Booked minutes MUST be the duration of non-cancelled reservations charged to that gym account. Played minutes MUST be the duration of non-cancelled reservations on which that member sits. The group balance MUST be the sum of those figures.
+- **FR-010**: The balance MUST show four figures for each member and for the group. Effective booked minutes are the duration of non-cancelled effective reservations charged to that account; a court with a guest is charged to its host. Hours booked this week and not played are the non-cancelled reservations charged to that account whose Madrid start is still in the future and falls in the current Monday–Sunday week. Played minutes are the duration of non-cancelled reservations that have already started and on which that member sits; a future seat does not count, and the group total counts every seated member. The difference is played minutes minus the effective booked minutes of reservations that have already started. A future booking MUST NOT change the difference. A cancelled reservation MUST add nothing.
 - **FR-011**: At the horizon opening the worker MUST freeze the court count at `min(maxCourts, ceil(optedIn / maxPerCourt))` using who was in at that instant, defaulting to 4 courts and 3 players.
 - **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
 - **FR-021**: A grab MUST try every court at the planned time, then the same search 30 minutes earlier and 30 minutes later, staying on the same Madrid day. The reservation MUST record the time that was actually booked, and the board MUST show a court time only for a real reservation. When every try is unavailable, FODBS MUST email the opted-in members once and MUST NOT present any court as booked.
 - **FR-022**: An imported gym booking at the same Madrid start, duration, and club as a weekly slot MUST count as that slot. FODBS MUST keep one occurrence for that time, MUST show only the courts that are actually reserved, and MUST NOT grab another court once the targeted count is already reserved.
-- **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 3), the worker MUST choose the lowest `bookedMinutes - playedMinutes`.
+- **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 3), the worker MUST choose the lowest charge minus play. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started.
 - **FR-014**: A grab MUST be idempotent per occurrence and court index.
 - **FR-015**: The worker MUST cancel a held court with zero seats when the time is at or after `start - cancelLeadMinutes` and still before `start - penaltyGuardMinutes`. Defaults are 180 and 20 minutes.
 - **FR-016**: Portal calls MUST go through `GymGateway`. A portal failure MUST be recorded and MUST NOT crash the HTTP process.

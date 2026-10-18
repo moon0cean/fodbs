@@ -59,7 +59,8 @@ fieldset.days button.on { border-color: var(--ball); }
   border-radius: 22px;
   padding: 18px;
 }
-.figures { display: flex; gap: 18px; }
+.figures { display: flex; flex-wrap: wrap; gap: 18px 22px; }
+.figures p { margin: 0; min-width: 7.5rem; }
 .figures span, .court-label em, .ledger em { display: block; color: var(--muted); font-style: normal; font-size: 13px; }
 .figures strong, h2 { font-family: Fraunces, Georgia, serif; font-weight: 560; }
 .ahead { color: var(--ahead); }

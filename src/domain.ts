@@ -32,8 +32,17 @@ export type BalanceReservation = {
   hostUserId: string | null;
   status: string;
   durationMinutes: number;
+  startsAt: Date;
+  effective: boolean;
   memberIds: string[];
   guestCount: number;
+};
+
+export type MinutesBalance = {
+  effectiveBookedMinutes: number;
+  weekBookedMinutes: number;
+  playedMinutes: number;
+  differenceMinutes: number;
 };
 
 export type CourtSeat = {
@@ -117,20 +126,35 @@ export function shouldCancel(input: {
   return input.now.getTime() < shut && input.now.getTime() < input.startsAt.getTime();
 }
 
-export function balanceMinutes(reservations: BalanceReservation[], userId?: string): {
-  bookedMinutes: number;
-  playedMinutes: number;
-} {
-  let bookedMinutes = 0;
+export function balanceMinutes(reservations: BalanceReservation[], now: Date, zone: string, userId?: string): MinutesBalance {
+  const local = DateTime.fromJSDate(now, { zone });
+  const weekStart = local.startOf('day').minus({ days: local.weekday - 1 });
+  const weekEnd = weekStart.plus({ weeks: 1 });
+  let effectiveBookedMinutes = 0;
+  let weekBookedMinutes = 0;
   let playedMinutes = 0;
+  let settledBookedMinutes = 0;
   for (const reservation of reservations) {
     if (reservation.status === 'cancelled') continue;
     const payer = courtPayer(reservation);
-    if (!userId || payer === userId) bookedMinutes += reservation.durationMinutes;
+    const chargedHere = !userId || payer === userId;
+    const started = reservation.startsAt.getTime() <= now.getTime();
+    const start = DateTime.fromJSDate(reservation.startsAt, { zone });
+    if (chargedHere && reservation.effective) {
+      effectiveBookedMinutes += reservation.durationMinutes;
+      if (started) settledBookedMinutes += reservation.durationMinutes;
+    }
+    if (chargedHere && !started && start >= weekStart && start < weekEnd) weekBookedMinutes += reservation.durationMinutes;
+    if (!started) continue;
     if (!userId) playedMinutes += reservation.durationMinutes * reservation.memberIds.length;
     else if (reservation.memberIds.includes(userId)) playedMinutes += reservation.durationMinutes;
   }
-  return { bookedMinutes, playedMinutes };
+  return {
+    effectiveBookedMinutes,
+    weekBookedMinutes,
+    playedMinutes,
+    differenceMinutes: playedMinutes - settledBookedMinutes,
+  };
 }
 
 function cloneReservations(reservations: ShapedReservation[]): ShapedReservation[] {
