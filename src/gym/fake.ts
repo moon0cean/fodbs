@@ -8,6 +8,7 @@ export class FakeGymGateway implements GymGateway {
   listed: GymListedBooking[] = [];
   failLogins = new Set<string>();
   failBooks = false;
+  bons: number | null = null;
 
   ready(): boolean {
     return true;
@@ -42,6 +43,10 @@ export class FakeGymGateway implements GymGateway {
 
   async listBookings(): Promise<GymListedBooking[]> {
     return this.listed;
+  }
+
+  async listBons(): Promise<number | null> {
+    return this.bons;
   }
 
   async close(): Promise<void> {}

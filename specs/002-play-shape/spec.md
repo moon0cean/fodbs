@@ -53,9 +53,9 @@ At the start of the slot's local day (the end of the day before), both front bub
 
 ### User Story 4 - Spanish and a phone layout (Priority: P2)
 
-The interface is Spanish unless the member switches to English. The choice is remembered on the device. On a narrow screen the four squash courts stack, and controls are large enough to tap.
+The interface is Spanish unless the member switches to English. The choice is remembered on the device. On a narrow screen the four squash courts sit in a horizontal slider, one court at a time, and controls are large enough to tap.
 
-**Independent Test**: Load with no saved language and see Spanish. Switch to English and reload. The court diagram remains one column below 800px.
+**Independent Test**: Load with no saved language and see Spanish. Switch to English and reload. Below 800px the courts slide sideways in order 05, 04, 11, 10.
 
 ## Requirements *(mandatory)*
 
@@ -70,7 +70,7 @@ The interface is Spanish unless the member switches to English. The choice is re
 - **FR-107**: The last invited member on a court that has a guest MUST NOT be able to leave until the guest is removed.
 - **FR-108**: When a court has at least one guest, booked minutes for the full duration MUST be attributed to the invited host who added a guest, not split. Played minutes MUST count only invited members in a bubble.
 - **FR-109**: At local midnight of the slot day, a held court that is not yet effective and is missing a front occupant MUST be cancelled when the clock is still before the penalty guard. Both front occupants present at that deadline MUST make the booking effective.
-- **FR-110**: The UI MUST default to Spanish, offer English, and remember the choice. Messages shown for a failed action MUST follow that language. The court cards MUST fill the width of the panel. Their order is Squash 05 top left, 04 top right, 11 bottom left, and 10 bottom right. Below 800px they stack in that order with tap targets of at least 44px. Above that they stay side by side. Opting in, or a booking on one court, MUST NOT move or stretch the other card.
+- **FR-110**: The UI MUST default to Spanish, offer English, and remember the choice. Messages shown for a failed action MUST follow that language. The court cards MUST fill the width of the panel. Their order is Squash 05 top left, 04 top right, 11 bottom left, and 10 bottom right. Below 800px those four courts MUST be a horizontal slider in that same order, one court across the panel, so the member can slide to the next court. Above that they stay side by side. Opting in, or a booking on one court, MUST NOT move or stretch the other card.
 - **FR-111**: A member MUST be able to pause and restore their own account. A paused account can log in, and MUST NOT opt in, take a seat, or be used to book.
 
 ### Key Entities

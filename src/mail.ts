@@ -52,6 +52,20 @@ export class UnconfiguredMailer implements Mailer {
   }
 }
 
+export function lowBonsMessage(remaining: number): Pick<OutboundMail, 'subject' | 'text'> {
+  return {
+    subject: 'Te quedan pocos bons',
+    text: `Te quedan ${remaining} bons de squash. Una hora de pista gasta 4. Cuando se acaben, FODBS no puede reservar.`,
+  };
+}
+
+export function emptyBonsMessage(): Pick<OutboundMail, 'subject' | 'text'> {
+  return {
+    subject: 'Te has quedado sin bons',
+    text: 'No te quedan bons de squash. FODBS no puede reservar hasta que compres más.',
+  };
+}
+
 export function inviteMessage(link: string): OutboundMail['text'] {
   return [
     'Un administrador te ha invitado a FODBS.',

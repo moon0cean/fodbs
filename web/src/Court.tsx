@@ -5,7 +5,55 @@ import { useI18n } from './i18n';
 
 const SPOTS: Spot[] = ['front_left', 'front_right', 'back'];
 
-export function SquashCourt({
+export type CourtTime = {
+  occurrenceId: string;
+  label: string;
+  court: Court;
+};
+
+export function CourtCard({
+  courtIndex,
+  times,
+  meId,
+  onChange,
+  onError,
+}: {
+  courtIndex: number;
+  times: CourtTime[];
+  meId: string;
+  onChange: () => void;
+  onError: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const [selectedId, setSelectedId] = useState('');
+  const current = times.find((time) => time.occurrenceId === selectedId) ?? times[0];
+  const court = current?.court ?? { courtIndex, reservationId: null, status: 'open' as const, occupants: [] };
+
+  return (
+    <article className="squash">
+      <div className="court-label">
+        <span>{t('court')} {courtNumber(courtIndex)}</span>
+        {times.length > 0 && (
+          <div className="time-slider" role="listbox" aria-label={`${t('courtTimes')} ${courtNumber(courtIndex)}`}>
+            {times.map((time) => (
+              <button
+                key={time.occurrenceId}
+                type="button"
+                className={current && time.occurrenceId === current.occurrenceId ? 'on' : ''}
+                onClick={() => setSelectedId(time.occurrenceId)}
+              >
+                {time.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <SquashCourt court={court} meId={meId} onChange={onChange} onError={onError} />
+    </article>
+  );
+}
+
+function SquashCourt({
   court,
   meId,
   onChange,
@@ -16,7 +64,7 @@ export function SquashCourt({
   onChange: () => void;
   onError: (value: string) => void;
 }) {
-  const { t, status, explain } = useI18n();
+  const { t, explain } = useI18n();
   const [guestName, setGuestName] = useState('');
   const joinable = court.status === 'held' && court.reservationId;
   const mine = court.occupants.some((occupant) => occupant.userId === meId);
@@ -36,12 +84,15 @@ export function SquashCourt({
     }).then(onChange).catch((reason: unknown) => onError(text(reason, explain)));
   }
 
+  function removeGuest(occupantId: string) {
+    if (!court.reservationId) return;
+    void api(`/api/reservations/${court.reservationId}/guests/${occupantId}`, { method: 'DELETE' })
+      .then(onChange)
+      .catch((reason: unknown) => onError(text(reason, explain)));
+  }
+
   return (
-    <article className={`squash status-${court.status}`}>
-      <div className="court-label">
-        <span>{t('court')} {courtNumber(court.courtIndex)}</span>
-        <em>{status(court.status)}</em>
-      </div>
+    <div className={`court-body status-${court.status}`}>
       <div className="diagram" aria-label={`${t('court')} ${courtNumber(court.courtIndex)}`}>
         <div className="front-wall" />
         <div className="short-line" />
@@ -55,24 +106,33 @@ export function SquashCourt({
           const blocked = Boolean(person && !own) || !joinable;
           const label = person ? (person.displayName || t('guest')) : '+';
           return (
-            <button
-              key={spot}
-              type="button"
-              className={`bubble ${spot} ${person ? 'filled' : ''} ${isGuest ? 'guest' : ''}`}
-              disabled={blocked && !own}
-              onClick={() => {
-                if (!joinable) return;
-                if (isGuest) return;
-                sit(spot);
-              }}
-            >
-              <strong>{person ? initials(person.displayName || t('guest')) : '+'}</strong>
-              <span>{label}</span>
-            </button>
+            <div key={spot} className={`bubble-slot ${spot}`}>
+              <button
+                type="button"
+                className={`bubble ${person ? 'filled' : ''} ${isGuest ? 'guest' : ''}`}
+                disabled={blocked && !own}
+                onClick={() => {
+                  if (!joinable || isGuest) return;
+                  sit(spot);
+                }}
+              >
+                <strong>{person ? initials(person.displayName || t('guest')) : '+'}</strong>
+                <span>{label}</span>
+              </button>
+              {isGuest && joinable && mine && person && (
+                <button
+                  type="button"
+                  className="guest-x"
+                  aria-label={`${t('removeGuest')} ${label}`}
+                  onClick={() => removeGuest(person.id)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
-      <p className="court-caption">{t('courtCaption')}</p>
       {joinable && mine && nextEmpty && (
         <form
           className="guest-row"
@@ -92,25 +152,9 @@ export function SquashCourt({
             <input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={40} placeholder={t('guestName')} />
           </label>
           <button className="solid" type="submit">{t('addGuest')}</button>
-          <p>{t('guestHint')}</p>
         </form>
       )}
-      {joinable && mine && court.occupants.filter((occupant) => !occupant.userId).map((occupant) => (
-        <button
-          key={occupant.id}
-          type="button"
-          className="guest-remove"
-          onClick={() => {
-            if (!court.reservationId) return;
-            void api(`/api/reservations/${court.reservationId}/guests/${occupant.id}`, { method: 'DELETE' })
-              .then(onChange)
-              .catch((reason: unknown) => onError(text(reason, explain)));
-          }}
-        >
-          {t('removeGuest')} {occupant.displayName || t('guest')}
-        </button>
-      ))}
-    </article>
+    </div>
   );
 }
 

@@ -70,8 +70,9 @@ Body: `{ "username", "password" }`. Both required, non-empty.
 
 ### `GET /api/dashboard?date=YYYY-MM-DD`
 
-`date` is a Madrid calendar date. It defaults to today in Madrid. Dates
-outside the history-plus-horizon window are rejected with 400 `date_out_of_range`.
+`date` is a Madrid calendar date. It defaults to today in Madrid. The
+returned `dates` start on that day and run through the horizon. Earlier days
+and dates past the horizon are rejected with 400 `date_out_of_range`.
 
 200:
 

@@ -128,7 +128,18 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
         ...reservation,
         startsAt: reservation.startsAt.toISOString(),
       })),
+      bonsRemaining: account.bonsRemaining,
+      bonsCheckedAt: account.bonsCheckedAt?.toISOString() ?? null,
+      syncedAt: account.syncedAt?.toISOString() ?? null,
     };
+  });
+
+  app.post('/api/account/sync', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const accepted = await db.requestSync(user.id);
+    if (!accepted) return fail(reply, 400, 'no_credentials');
+    return reply.code(202).send({ accepted: true });
   });
 
   app.patch('/api/account/active', async (request, reply) => {

@@ -35,6 +35,9 @@ export const gymCredentials = pgTable('gym_credentials', {
   passwordNonce: text('password_nonce').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
   syncedAt: timestamp('synced_at', { withTimezone: true, mode: 'date' }),
+  bonsRemaining: integer('bons_remaining'),
+  bonsCheckedAt: timestamp('bons_checked_at', { withTimezone: true, mode: 'date' }),
+  bonsNotice: text('bons_notice').notNull().default('ok'),
 });
 
 export const accessRequests = pgTable('access_requests', {

@@ -53,8 +53,8 @@ the password is absent and the stored value is not the plaintext.
 
 ### User Story 3 - See the week and take a court (Priority: P1)
 
-A member opens the dashboard, slides across the bookable week and the recent
-past, and sees four squash courts in a 2x2. They mark themselves in for a
+A member opens the dashboard, slides across the bookable days starting today,
+and sees four squash courts in a 2x2. They mark themselves in for a
 slot and, once a court is held, add or remove only themselves. A court holds
 at most three players. The dashboard shows every active member and the group
 balance. The account page shows that member's balance and the reservations
@@ -69,7 +69,7 @@ played minutes with the reservation rows.
 **Acceptance Scenarios**:
 
 1. **Given** active members, **When** a member opens the dashboard, **Then** they see those members, the group booked minutes, and the group played minutes.
-2. **Given** a date inside the horizon, **When** the member selects it on the slider, **Then** the slots for that date and a 2x2 of courts are shown.
+2. **Given** a date inside the horizon, **When** the member selects it on the slider, **Then** the slots for that date and a 2x2 of courts are shown. The slider starts on the current Madrid day and lists no earlier day.
 3. **Given** a held court with two seats, **When** the member joins, **Then** they are seated.
 4. **Given** a held court with three seats, **When** another member joins it, **Then** the join is rejected.
 5. **Given** a member already seated on another court of the same slot, **When** they join a different held court, **Then** they leave the first court and sit on the second.
@@ -147,7 +147,7 @@ confirm those admin routes are rejected.
 - **FR-004**: Sessions MUST be server-side, carried in an httpOnly cookie, and MUST stop working when the user is deactivated or the session is expired.
 - **FR-005**: The system MUST encrypt each gym identifier and password with AES-256-GCM, a random nonce, and the user id as additional authenticated data.
 - **FR-006**: The API MUST NOT return a gym password. The account owner MAY see their own gym identifier.
-- **FR-007**: The dashboard MUST list active members, the group booked-versus-played balance, a date slider covering the horizon plus recent history, and four courts in a 2x2.
+- **FR-007**: The dashboard MUST list active members, the group booked-versus-played balance, a date slider that starts on the current Madrid day and covers the horizon, and four courts in a 2x2. Earlier days MUST NOT appear on that slider.
 - **FR-008**: A member MUST be able to mark themselves in or out of a future slot, and MUST be able to add or remove only themselves on a held court, with a maximum of three players.
 - **FR-009**: Joining a second court of the same slot MUST move the member off the first court.
 - **FR-010**: Booked minutes MUST be the duration of non-cancelled reservations charged to that gym account. Played minutes MUST be the duration of non-cancelled reservations on which that member sits. The group balance MUST be the sum of those figures.

@@ -7,6 +7,7 @@ import {
   courtsToBook,
   occurrenceStarts,
   partyDivisor,
+  windowDates,
   pickAccount,
   placeMember,
   redactInviteUrl,
@@ -188,6 +189,15 @@ describe('occurrenceStarts', () => {
       rules: [{ id: 'rule', weekday: 1, startTime: '19:00', durationMinutes: 60, clubCode: 'ROC', active: true }],
     });
     expect(rows.map((row) => row.startsAt.toISOString())).toContain('2026-10-19T17:00:00.000Z');
+  });
+});
+
+describe('windowDates', () => {
+  it('starts on the current Madrid day', () => {
+    const dates = windowDates(new Date('2026-10-18T16:00:00.000Z'), 'Europe/Madrid', 0, 7);
+    expect(dates[0]).toBe('2026-10-18');
+    expect(dates.at(-1)).toBe('2026-10-25');
+    expect(dates).not.toContain('2026-10-17');
   });
 });
 

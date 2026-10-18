@@ -6,12 +6,19 @@ export async function syncAccountBookings(
   gateway: GymGateway,
   login: GymLogin & { userId: string },
   now = new Date(),
-): Promise<number> {
-  if (!gateway.canList()) return 0;
+): Promise<{ imported: number; bons: number | null }> {
+  if (!gateway.canList()) return { imported: 0, bons: null };
   const session = await gateway.openSession(login);
   try {
     const bookings = await gateway.listBookings(session);
-    return await db.importBookings(login.userId, bookings, now);
+    const imported = await db.importBookings(login.userId, bookings, now);
+    let bons: number | null = null;
+    try {
+      bons = await gateway.listBons(session);
+    } catch {
+      bons = null;
+    }
+    return { imported, bons };
   } finally {
     await gateway.close(session);
   }
