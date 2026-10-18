@@ -1,9 +1,14 @@
 services:
   server:
+    image: ghcr.io/moon0cean/fodbs:main
+    pull_policy: always
     ports: !reset []
     networks:
       - default
       - edge
+  worker:
+    image: ghcr.io/moon0cean/fodbs:main
+    pull_policy: always
 
 networks:
   edge:

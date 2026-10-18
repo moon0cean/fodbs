@@ -1,3 +1,5 @@
+import { ROCAFORT_ORIGIN } from './rocafort.js';
+
 export type GymLogin = { username: string; password: string };
 
 export type GymBookRequest = {
@@ -12,11 +14,21 @@ export type GymSession = {
   password: string;
 };
 
+export type GymListedBooking = {
+  externalRef: string;
+  startsAt: Date;
+  durationMinutes: number;
+  clubCode: string;
+  courtIndex: number;
+};
+
 export interface GymGateway {
   ready(): boolean;
+  canList(): boolean;
   openSession(login: GymLogin): Promise<GymSession>;
   book(session: GymSession, request: GymBookRequest): Promise<{ externalRef: string }>;
   cancel(session: GymSession, externalRef: string): Promise<void>;
+  listBookings(session: GymSession): Promise<GymListedBooking[]>;
   close(session: GymSession): Promise<void>;
 }
 
@@ -36,12 +48,6 @@ export type GymFlow = {
   cancelUrl: (externalRef: string) => string;
   cancelSelector: string;
   cancelledSelector: string;
-};
-
-export const DIR_LOGIN = {
-  usernameSelector: '#ctl00_content_txtIdentificador',
-  passwordSelector: '#ctl00_content_txtContrasenya',
-  submitSelector: '#ctl00_content_imgbEnviar',
 };
 
 export function fixtureFlow(baseUrl: string): GymFlow {
@@ -64,22 +70,24 @@ export function fixtureFlow(baseUrl: string): GymFlow {
   };
 }
 
-export function dirFlow(env: NodeJS.ProcessEnv, baseUrl: string): GymFlow {
-  const cancelTemplate = env.GYM_CANCEL_URL ?? '';
+export function dirFlow(baseUrl: string): GymFlow {
+  const origin = baseUrl.includes('pistes.esportiurocafort.com') ? ROCAFORT_ORIGIN : new URL(baseUrl).origin;
   return {
-    loginUrl: baseUrl,
-    ...DIR_LOGIN,
-    postLoginSelector: env.GYM_SEL_READY ?? '',
-    bookUrl: env.GYM_BOOK_URL ?? '',
-    clubSelector: env.GYM_SEL_CLUB ?? '',
-    courtSelector: env.GYM_SEL_COURT ?? '',
-    startsSelector: env.GYM_SEL_STARTS ?? '',
-    durationSelector: env.GYM_SEL_DURATION ?? '',
-    bookSelector: env.GYM_SEL_BOOK ?? '',
-    refSelector: env.GYM_SEL_REF ?? '',
-    cancelUrl: (externalRef) => cancelTemplate.replaceAll('{ref}', encodeURIComponent(externalRef)),
-    cancelSelector: env.GYM_SEL_CANCEL ?? '',
-    cancelledSelector: env.GYM_SEL_CANCELLED || '#cancelled',
+    loginUrl: `${origin}/index.php`,
+    usernameSelector: '#NomUsuari:visible',
+    passwordSelector: '#Contrasenya:visible',
+    submitSelector: 'form[name="entrada"]:visible button',
+    postLoginSelector: 'a[href="index.php?Operacio=TancarSessio"]',
+    bookUrl: `${origin}/ReservaFase1.php?TipusPista=SQUASH`,
+    clubSelector: '',
+    courtSelector: '',
+    startsSelector: '',
+    durationSelector: '',
+    bookSelector: '',
+    refSelector: '',
+    cancelUrl: (externalRef) => `${origin}/ReservesLlista.php?Operacio=EliminaPista&Comptador=${encodeURIComponent(externalRef)}`,
+    cancelSelector: '',
+    cancelledSelector: '',
   };
 }
 

@@ -8,9 +8,10 @@ import type { AppConfig } from './config.js';
 import { AppDatabase } from './db/index.js';
 import { redactInviteUrl } from './domain.js';
 import { registerRoutes } from './http.js';
+import { SmtpMailer, UnconfiguredMailer, type Mailer } from './mail.js';
 import { hashPassword } from './passwords.js';
 
-export async function buildApp(config: AppConfig, options?: { logger?: boolean }): Promise<{ app: FastifyInstance; db: AppDatabase }> {
+export async function buildApp(config: AppConfig, options?: { logger?: boolean; mailer?: Mailer }): Promise<{ app: FastifyInstance; db: AppDatabase }> {
   const app = Fastify({
     logger: options?.logger === false
       ? false
@@ -53,8 +54,20 @@ export async function buildApp(config: AppConfig, options?: { logger?: boolean }
   }
 
   await app.register(cookie);
-  await app.register(rateLimit, { global: false });
-  registerRoutes(app, db, config);
+  await app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: () => ({ error: 'rate_limited' }),
+  });
+  const mailer = options?.mailer ?? (config.smtpHost && config.smtpFrom
+    ? new SmtpMailer({
+        host: config.smtpHost,
+        port: config.smtpPort,
+        user: config.smtpUser,
+        pass: config.smtpPass,
+        from: config.smtpFrom,
+      })
+    : new UnconfiguredMailer());
+  registerRoutes(app, db, config, mailer);
 
   const webDist = path.resolve('web/dist');
   if (existsSync(webDist)) {

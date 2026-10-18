@@ -158,7 +158,8 @@ confirm those admin routes are rejected.
 - **FR-015**: The worker MUST cancel a held court with zero seats when the time is at or after `start - cancelLeadMinutes` and still before `start - penaltyGuardMinutes`. Defaults are 180 and 20 minutes.
 - **FR-016**: Portal calls MUST go through `GymGateway`. A portal failure MUST be recorded and MUST NOT crash the HTTP process.
 - **FR-017**: Admins MUST be able to create invites, activate or deactivate users, and create or deactivate slot rules. Members MUST NOT.
-- **FR-018**: Automated tests MUST NOT send requests to `dir.cat`.
+- **FR-018**: Automated tests MUST NOT send requests to `dir.cat` or `pistes.esportiurocafort.com`.
+- **FR-020**: The worker MUST book squash on `pistes.esportiurocafort.com` by choosing the court, the Madrid start, and an end time on a 15-minute grid, then paying with a bo. The reservation counter is the external reference used to list and cancel. A missing bo, a court the club does not offer, or a duration the slot does not allow MUST fail that attempt and MUST NOT start a card payment.
 - **FR-019**: Deployment documentation MUST describe a separate Compose project, memory caps, no published Postgres port, and a single extra Caddy host on the existing family-net VPS.
 
 ### Key Entities
@@ -186,7 +187,7 @@ confirm those admin routes are rejected.
 
 ## Assumptions
 
-- The gym portal is the DiR member area at `https://www.dir.cat/net/mv/identificacio.aspx`. Login fields are the live web-forms controls. The post-login court form is behind authentication, so booking selectors are configuration filled after one headed recording.
+- Squash is booked on `https://pistes.esportiurocafort.com`. Login is `#NomUsuari` and `#Contrasenya`. A reservation is court, day, start, and end time, paid with a bo. Courts are SQ04, SQ05, SQ10, SQ11, and SQ12. The worker targets the first four. The reservation counter on "Les meves reserves" is the external reference.
 - The product horizon is 7 days even though DiR's public class FAQ says 5 days. Both the horizon and the quota caps are configuration.
 - Slot times are interpreted in `Europe/Madrid`.
 - UI copy is English.

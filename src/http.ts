@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { z } from 'zod';
 import type { AppConfig } from './config.js';
 import type { AppDatabase, SessionUser } from './db/index.js';
+import { inviteMessage, type Mailer } from './mail.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { newSecret, sha256 } from './secrets.js';
 
@@ -42,8 +43,9 @@ const preferenceBody = z.object({
 
 const inviteBody = z.object({
   role: z.enum(['admin', 'member']).default('member'),
-  email: z.union([z.string().trim().email(), z.literal('')]).optional(),
+  email: z.string().trim().email(),
 });
+const accessBody = z.object({ email: z.string().trim().email() });
 
 const slotBody = z.object({
   weekday: z.number().int().min(1).max(7),
@@ -52,7 +54,7 @@ const slotBody = z.object({
   clubCode: z.string().trim().min(1).max(32),
 });
 
-export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: AppConfig): void {
+export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: AppConfig, mailer: Mailer): void {
   app.decorateRequest('user', null);
 
   app.addHook('onRequest', async (request) => {
@@ -63,6 +65,13 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
   });
 
   app.get('/api/health', async () => ({ ok: true }));
+
+  app.post('/api/access-requests', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const body = parse(accessBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.requestAccess(body.email.toLowerCase(), new Date());
+    return reply.code(204).send();
+  });
 
   app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = parse(loginBody, request.body);
@@ -232,23 +241,84 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     return reply.code(204).send();
   });
 
+  app.delete('/api/admin/users/:id', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const result = await db.removeUser(params.data.id, actor.id);
+    if (result === 'missing') return fail(reply, 404, 'missing');
+    if (result !== 'ok') return fail(reply, 400, result);
+    return reply.code(204).send();
+  });
+
   app.post('/api/admin/invites', async (request, reply) => {
     const actor = requireAdmin(request, reply);
     if (!actor) return;
     const body = parse(inviteBody, request.body);
     if (!body) return fail(reply, 400, 'invalid_body');
+    const created = await sendInvite(db, mailer, config, request, {
+      email: body.email.toLowerCase(),
+      role: body.role ?? 'member',
+      createdBy: actor.id,
+    });
+    return reply.code(201).send(created);
+  });
+
+  app.post('/api/admin/invites/:id/send', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
     const secret = newSecret();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const email = body.email ? body.email.toLowerCase() : null;
-    const role = body.role ?? 'member';
-    await db.createInvite({
-      tokenHash: secret.hash,
-      email,
-      role,
+    const rotated = await db.replaceInviteToken(params.data.id, secret.hash, expiresAt);
+    if (!rotated) return fail(reply, 400, 'missing');
+    const mailed = await deliverInvite(mailer, config, request, rotated.email, secret.raw);
+    return { token: secret.raw, email: rotated.email, mailed };
+  });
+
+  app.delete('/api/admin/invites/:id', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const result = await db.deleteInvite(params.data.id);
+    if (result === 'missing') return fail(reply, 404, 'missing');
+    if (result === 'used') return fail(reply, 400, 'used');
+    return reply.code(204).send();
+  });
+
+  app.get('/api/admin/access-requests', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const requests = await db.listAccessRequests();
+    return {
+      requests: requests.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+    };
+  });
+
+  app.post('/api/admin/access-requests/:id/approve', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const taken = await db.takeAccessRequest(params.data.id, 'approved', actor.id, new Date());
+    if (!taken) return fail(reply, 404, 'missing');
+    const created = await sendInvite(db, mailer, config, request, {
+      email: taken.email,
+      role: 'member',
       createdBy: actor.id,
-      expiresAt,
     });
-    return reply.code(201).send({ token: secret.raw, expiresAt: expiresAt.toISOString(), role, email });
+    return reply.code(201).send(created);
+  });
+
+  app.post('/api/admin/access-requests/:id/reject', async (request, reply) => {
+    const actor = requireAdmin(request, reply);
+    if (!actor) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const taken = await db.takeAccessRequest(params.data.id, 'rejected', actor.id, new Date());
+    if (!taken) return fail(reply, 404, 'missing');
+    return reply.code(204).send();
   });
 
   app.get('/api/admin/invites', async (request, reply) => {
@@ -294,6 +364,43 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T | null {
 
 function fail(reply: FastifyReply, status: number, error: string) {
   return reply.code(status).send({ error });
+}
+
+function requestOrigin(config: AppConfig, request: FastifyRequest): string {
+  if (config.publicUrl) return config.publicUrl;
+  const forwarded = request.headers['x-forwarded-proto'];
+  const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0] || request.protocol;
+  return `${proto}://${request.headers.host ?? 'localhost'}`;
+}
+
+async function deliverInvite(mailer: Mailer, config: AppConfig, request: FastifyRequest, email: string, token: string): Promise<boolean> {
+  if (!mailer.configured()) return false;
+  await mailer.send({
+    to: email,
+    subject: 'Invitación a FODBS',
+    text: inviteMessage(`${requestOrigin(config, request)}/invite/${token}`),
+  });
+  return true;
+}
+
+async function sendInvite(
+  db: AppDatabase,
+  mailer: Mailer,
+  config: AppConfig,
+  request: FastifyRequest,
+  input: { email: string; role: 'admin' | 'member'; createdBy: string },
+) {
+  const secret = newSecret();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.createInvite({
+    tokenHash: secret.hash,
+    email: input.email,
+    role: input.role,
+    createdBy: input.createdBy,
+    expiresAt,
+  });
+  const mailed = await deliverInvite(mailer, config, request, input.email, secret.raw);
+  return { token: secret.raw, expiresAt: expiresAt.toISOString(), role: input.role, email: input.email, mailed };
 }
 
 function requireUser(request: FastifyRequest, reply: FastifyReply): SessionUser | null {

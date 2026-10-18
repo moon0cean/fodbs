@@ -3,14 +3,16 @@ import { AppDatabase } from './db/index.js';
 import { dirFlow, fixtureFlow } from './gym/gateway.js';
 import { PlaywrightGymGateway } from './gym/playwright.js';
 import { runSchedulerTick, SessionPool } from './scheduler.js';
+import { syncAccountBookings } from './sync.js';
 
 const config = loadConfig();
 const db = await AppDatabase.open(config);
-const flow = config.gymFlow === 'fixture' ? fixtureFlow(config.gymBaseUrl) : dirFlow(process.env, config.gymBaseUrl);
+const flow = config.gymFlow === 'fixture' ? fixtureFlow(config.gymBaseUrl) : dirFlow(config.gymBaseUrl);
 const gateway = new PlaywrightGymGateway({
   flow,
   headless: config.gymHeadless,
   noSandbox: config.playwrightNoSandbox,
+  zone: config.zone,
 });
 const sessions = new SessionPool(gateway);
 let running = false;
@@ -32,6 +34,13 @@ async function tick(): Promise<void> {
       config: schedulerConfig(config),
       log,
     });
+    if (gateway.canList()) {
+      for (const login of await db.pendingCredentialSync()) {
+        const imported = await syncAccountBookings(db, gateway, login);
+        await db.markCredentialsSynced(login.userId, new Date());
+        log({ msg: 'bookings_synced', userId: login.userId, imported });
+      }
+    }
   } catch (error) {
     log({ msg: 'tick_failed', detail: error instanceof Error ? error.message : 'error' });
   } finally {

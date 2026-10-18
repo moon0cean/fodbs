@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Account, type Balance, type Dashboard, type SessionUser } from './api';
+import { AdminScreen } from './Admin';
 import { SquashCourt } from './Court';
+import { courtNumber, displayCourts } from './courts';
 import { useI18n, type Lang } from './i18n';
 
 type Tab = 'dashboard' | 'account' | 'admin';
@@ -30,7 +32,7 @@ export function App() {
       <header className="top">
         <div>
           <p className="mark">FODBS</p>
-          <p className="sub">Fuck-off DIR booking system</p>
+          <p className="sub">{t('tagline')}</p>
         </div>
         <nav>
           <button className={tab === 'dashboard' ? 'on' : ''} onClick={() => setTab('dashboard')}>{t('board')}</button>
@@ -54,16 +56,19 @@ export function App() {
       {error && <p className="banner">{error}</p>}
       {tab === 'dashboard' && <DashboardScreen me={me} onError={setError} />}
       {tab === 'account' && <AccountScreen onActive={setMe} />}
-      {tab === 'admin' && me.role === 'admin' && <AdminScreen />}
+      {tab === 'admin' && me.role === 'admin' && <AdminScreen me={me} />}
     </div>
   );
 }
 
 function LoginScreen({ onDone }: { onDone: (user: SessionUser) => void }) {
-  const { t } = useI18n();
+  const { t, explain } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [requestEmail, setRequestEmail] = useState('');
+  const [requested, setRequested] = useState(false);
 
   return (
     <main className="gate">
@@ -77,7 +82,7 @@ function LoginScreen({ onDone }: { onDone: (user: SessionUser) => void }) {
           setError('');
           api<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
             .then(onDone)
-            .catch((reason: unknown) => setError(message(reason, t('failed'))));
+            .catch((reason: unknown) => setError(message(reason, explain)));
         }}
       >
         <label>{t('email')}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
@@ -85,12 +90,29 @@ function LoginScreen({ onDone }: { onDone: (user: SessionUser) => void }) {
         {error && <p className="banner">{error}</p>}
         <button className="solid" type="submit">{t('enter')}</button>
       </form>
+      <button type="button" onClick={() => setAsking((value) => !value)}>{t('requestAccess')}</button>
+      {asking && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError('');
+            api('/api/access-requests', { method: 'POST', body: JSON.stringify({ email: requestEmail }) })
+              .then(() => setRequested(true))
+              .catch((reason: unknown) => setError(message(reason, explain)));
+          }}
+        >
+          <p>{t('requestHint')}</p>
+          <label>{t('email')}<input type="email" value={requestEmail} onChange={(event) => setRequestEmail(event.target.value)} required /></label>
+          {requested && <p className="notice" role="status">{t('requestSent')}</p>}
+          <button className="solid" type="submit">{t('requestSend')}</button>
+        </form>
+      )}
     </main>
   );
 }
 
 function InviteScreen({ token, onDone }: { token: string; onDone: (user: SessionUser) => void }) {
-  const { t } = useI18n();
+  const { t, explain } = useI18n();
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -110,7 +132,7 @@ function InviteScreen({ token, onDone }: { token: string; onDone: (user: Session
             body: JSON.stringify({ token, email, password, displayName }),
           })
             .then(onDone)
-            .catch((reason: unknown) => setError(message(reason, t('failed'))));
+            .catch((reason: unknown) => setError(message(reason, explain)));
         }}
       >
         <label>{t('name')}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
@@ -124,7 +146,7 @@ function InviteScreen({ token, onDone }: { token: string; onDone: (user: Session
 }
 
 function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: string) => void }) {
-  const { t, lang } = useI18n();
+  const { t, lang, explain } = useI18n();
   const [data, setData] = useState<Dashboard | null>(null);
   const [date, setDate] = useState('');
 
@@ -136,7 +158,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
         setDate(dashboard.date);
         onError('');
       })
-      .catch((reason: unknown) => onError(message(reason, t('failed'))));
+      .catch((reason: unknown) => onError(message(reason, explain)));
   }
 
   useEffect(() => {
@@ -200,14 +222,14 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
                 void api(`/api/occurrences/${occurrence.id}/availability`, {
                   method: 'POST',
                   body: JSON.stringify({ in: !occurrence.myOptIn }),
-                }).then(() => load(data.date)).catch((reason: unknown) => onError(message(reason, t('failed'))));
+                }).then(() => load(data.date)).catch((reason: unknown) => onError(message(reason, explain)));
               }}
             >
               {occurrence.myOptIn ? t('imIn') : t('countMe')}
             </button>
           </header>
           <div className="courts">
-            {occurrence.courts.map((court) => (
+            {displayCourts(occurrence.courts).map((court) => (
               <SquashCourt
                 key={court.courtIndex}
                 court={court}
@@ -225,7 +247,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
 }
 
 function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) {
-  const { t, lang, weekdayShort } = useI18n();
+  const { t, lang, weekdayShort, explain } = useI18n();
   const [account, setAccount] = useState<Account | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -247,7 +269,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         setPreferredTime(next.preferences.preferredTime);
         setPartySize(next.preferences.partySize);
       }
-    }).catch((reason: unknown) => setError(message(reason, t('failed'))));
+    }).catch((reason: unknown) => setError(message(reason, explain)));
   }
 
   useEffect(() => {
@@ -272,7 +294,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
                 onActive(user);
                 load();
               })
-              .catch((reason: unknown) => setError(message(reason, t('failed'))));
+              .catch((reason: unknown) => setError(message(reason, explain)));
           }}
         >
           {active ? t('pauseAccount') : t('restoreAccount')}
@@ -289,7 +311,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
           }).then(() => {
             setPlaySaved(true);
             load();
-          }).catch((reason: unknown) => setError(message(reason, t('failed'))));
+          }).catch((reason: unknown) => setError(message(reason, explain)));
         }}
       >
         <h2>{t('playShape')}</h2>
@@ -334,11 +356,12 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
               setCredsSaved(true);
               load();
             })
-            .catch((reason: unknown) => setError(message(reason, t('failed'))));
+            .catch((reason: unknown) => setError(message(reason, explain)));
         }}
       >
         <h2>{t('credentials')}</h2>
         <p>{t('sealed')}</p>
+        <p>{t('syncHint')}</p>
         <label>{t('identifier')}<input value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
         <label>{t('password')}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
         {error && <p className="banner">{error}</p>}
@@ -351,7 +374,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         <ul className="ledger">
           {account.reservations.map((reservation) => (
             <li key={reservation.id}>
-              <span>{clock(reservation.startsAt, lang)} · {t('court')} {reservation.courtIndex + 1}</span>
+              <span>{clock(reservation.startsAt, lang)} · {t('court')} {courtNumber(reservation.courtIndex)}</span>
               <em>{reservation.status}</em>
               <strong>{hours(reservation.durationMinutes)}</strong>
             </li>
@@ -362,139 +385,6 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   );
 }
 
-function AdminScreen() {
-  const { t, lang, weekdayShort } = useI18n();
-  const [users, setUsers] = useState<{ id: string; email: string; displayName: string; role: string; active: boolean; hasGymCredentials: boolean }[]>([]);
-  const [invites, setInvites] = useState<{ id: string; role: string; email: string | null; expiresAt: string; usedAt: string | null }[]>([]);
-  const [rules, setRules] = useState<{ id: string; weekday: number; startTime: string; durationMinutes: number; clubCode: string; active: boolean }[]>([]);
-  const [link, setLink] = useState('');
-  const [error, setError] = useState('');
-  const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [weekday, setWeekday] = useState(1);
-  const [startTime, setStartTime] = useState('19:00');
-  const [durationMinutes, setDurationMinutes] = useState(60);
-
-  function load() {
-    Promise.all([
-      api<{ users: typeof users }>('/api/admin/users'),
-      api<{ invites: typeof invites }>('/api/admin/invites'),
-      api<{ rules: typeof rules }>('/api/admin/slot-rules'),
-    ]).then(([userBody, inviteBody, ruleBody]) => {
-      setUsers(userBody.users);
-      setInvites(inviteBody.invites);
-      setRules(ruleBody.rules);
-    }).catch((reason: unknown) => setError(message(reason, t('failed'))));
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  return (
-    <main className="panel admin">
-      {error && <p className="banner">{error}</p>}
-      <section>
-        <h2>{t('invite')}</h2>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            api<{ token: string }>('/api/admin/invites', {
-              method: 'POST',
-              body: JSON.stringify({ role: inviteRole, email: inviteEmail }),
-            }).then((created) => {
-              setLink(`${window.location.origin}/invite/${created.token}`);
-              setInviteEmail('');
-              load();
-            }).catch((reason: unknown) => setError(message(reason, t('failed'))));
-          }}
-        >
-          <label>{t('role')}
-            <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'member' | 'admin')}>
-              <option value="member">{t('member')}</option>
-              <option value="admin">{t('admin')}</option>
-            </select>
-          </label>
-          <label>{t('emailBind')}<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder={t('optionalField')} /></label>
-          <button className="solid" type="submit">{t('createInvite')}</button>
-        </form>
-        {link && (
-          <p className="link-row">
-            <code>{link}</code>
-            <button type="button" onClick={() => void navigator.clipboard.writeText(link)}>{t('copy')}</button>
-          </p>
-        )}
-        <ul className="ledger">
-          {invites.map((invite) => (
-            <li key={invite.id}>
-              <span>{invite.email ?? t('openInvite')} · {invite.role}</span>
-              <em>{invite.usedAt ? t('used') : t('open')}</em>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h2>{t('members')}</h2>
-        <ul className="ledger">
-          {users.map((user) => (
-            <li key={user.id}>
-              <span>{user.displayName} · {user.email}</span>
-              <em>{user.hasGymCredentials ? t('credentialsSaved') : t('noCredentials')}</em>
-              <button
-                type="button"
-                onClick={() => {
-                  api(`/api/admin/users/${user.id}`, { method: 'PATCH', body: JSON.stringify({ active: !user.active }) })
-                    .then(load)
-                    .catch((reason: unknown) => setError(message(reason, t('failed'))));
-                }}
-              >
-                {user.active ? t('deactivate') : t('activate')}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h2>{t('weeklySlots')}</h2>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            api('/api/admin/slot-rules', {
-              method: 'POST',
-              body: JSON.stringify({ weekday, startTime, durationMinutes, clubCode: 'ROC' }),
-            }).then(load).catch((reason: unknown) => setError(message(reason, t('failed'))));
-          }}
-        >
-          <label>{t('weekday')}
-            <select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>
-              {[1, 2, 3, 4, 5, 6, 7].map((day) => <option key={day} value={day}>{weekdayName(day, lang)} ({weekdayShort(day - 1)})</option>)}
-            </select>
-          </label>
-          <label>{t('start')}<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></label>
-          <label>{t('minutes')}<input type="number" min={30} max={180} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} /></label>
-          <button className="solid" type="submit">{t('addSlot')}</button>
-        </form>
-        <ul className="ledger">
-          {rules.map((rule) => (
-            <li key={rule.id}>
-              <span>{weekdayName(rule.weekday, lang)} {rule.startTime} · {rule.durationMinutes} {t('min')}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  api(`/api/admin/slot-rules/${rule.id}`, { method: 'PATCH', body: JSON.stringify({ active: !rule.active }) })
-                    .then(load)
-                    .catch((reason: unknown) => setError(message(reason, t('failed'))));
-                }}
-              >
-                {rule.active ? t('pause') : t('resume')}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
-  );
-}
 
 function BalanceCard({ title, balance }: { title: string; balance: Balance }) {
   const { t } = useI18n();
@@ -532,14 +422,14 @@ function readInviteToken(): string {
   return decodeURIComponent(parts[1]);
 }
 
-function message(reason: unknown, failed: string): string {
-  return reason instanceof ApiError ? reason.message.replaceAll('_', ' ') : failed;
+function message(reason: unknown, explain: (code: string) => string): string {
+  return reason instanceof ApiError ? explain(reason.message) : explain('request_failed');
 }
 
 function hours(minutes: number): string {
   const sign = minutes < 0 ? '-' : '';
   const absolute = Math.abs(minutes);
-  return `${sign}${Math.floor(absolute / 60)}h ${String(absolute % 60).padStart(2, '0')}m`;
+  return `${sign}${Math.floor(absolute / 60)} h ${String(absolute % 60).padStart(2, '0')} min`;
 }
 
 function signedHours(minutes: number): string {
@@ -567,6 +457,3 @@ function clock(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(locale(lang), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }).format(new Date(iso));
 }
 
-function weekdayName(isoWeekday: number, lang: Lang): string {
-  return new Intl.DateTimeFormat(locale(lang), { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, 9, 18 + isoWeekday)));
-}

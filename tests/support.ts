@@ -35,6 +35,12 @@ export function testConfig(url: string): AppConfig {
     bootstrapPassword: adminPassword,
     bootstrapName: 'Admin',
     attemptBackoffMs: 60_000,
+    publicUrl: 'http://127.0.0.1',
+    smtpHost: '',
+    smtpPort: 587,
+    smtpUser: '',
+    smtpPass: '',
+    smtpFrom: '',
   };
 }
 
