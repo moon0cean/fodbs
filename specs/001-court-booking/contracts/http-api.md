@@ -42,7 +42,7 @@ Body: `{ "token", "email", "password", "displayName" }`.
 
 ```json
 {
-  "balance": { "bookedMinutes": 0, "playedMinutes": 0 },
+  "balance": { "effectiveBookedMinutes": 0, "weekBookedMinutes": 0, "playedMinutes": 0, "differenceMinutes": 0 },
   "hasGymCredentials": true,
   "gymUsername": "12345678Z",
   "reservations": [
@@ -79,9 +79,9 @@ and dates past the horizon are rejected with 400 `date_out_of_range`.
 ```json
 {
   "activeUsers": [
-    { "id": "...", "displayName": "Ada", "bookedMinutes": 60, "playedMinutes": 120 }
+    { "id": "...", "displayName": "Ada", "effectiveBookedMinutes": 60, "weekBookedMinutes": 0, "playedMinutes": 120, "differenceMinutes": 60 }
   ],
-  "globalBalance": { "bookedMinutes": 60, "playedMinutes": 120 },
+  "globalBalance": { "effectiveBookedMinutes": 60, "weekBookedMinutes": 0, "playedMinutes": 120, "differenceMinutes": 60 },
   "me": { "id": "...", "displayName": "Ada", "role": "member", "hasGymCredentials": true },
   "dates": ["2026-10-17"],
   "date": "2026-10-17",

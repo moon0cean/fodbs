@@ -175,7 +175,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
           <h2>{t('activePlayers')}</h2>
           <ul>
             {data.activeUsers.map((user) => {
-              const delta = user.playedMinutes - user.bookedMinutes;
+              const delta = user.differenceMinutes;
               return (
                 <li key={user.id}>
                   <span className="avatar">{initials(user.displayName)}</span>
@@ -433,19 +433,14 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
 
 function BalanceCard({ title, balance }: { title: string; balance: Balance }) {
   const { t } = useI18n();
-  const max = Math.max(balance.bookedMinutes, balance.playedMinutes, 1);
-  const delta = balance.playedMinutes - balance.bookedMinutes;
   return (
     <article className="balance">
       <h2>{title}</h2>
       <div className="figures">
-        <p><span>{t('booked')}</span><strong>{hours(balance.bookedMinutes)}</strong></p>
+        <p><span>{t('effectiveBooked')}</span><strong>{hours(balance.effectiveBookedMinutes)}</strong></p>
+        <p><span>{t('weekBooked')}</span><strong>{hours(balance.weekBookedMinutes)}</strong></p>
         <p><span>{t('played')}</span><strong>{hours(balance.playedMinutes)}</strong></p>
-        <p><span>{t('delta')}</span><strong className={delta >= 0 ? 'ahead' : 'behind'}>{signedHours(delta)}</strong></p>
-      </div>
-      <div className="bars" aria-hidden="true">
-        <i style={{ width: `${(balance.bookedMinutes / max) * 100}%` }} />
-        <i className="played" style={{ width: `${(balance.playedMinutes / max) * 100}%` }} />
+        <p><span>{t('delta')}</span><strong className={balance.differenceMinutes >= 0 ? 'ahead' : 'behind'}>{signedHours(balance.differenceMinutes)}</strong></p>
       </div>
     </article>
   );

@@ -93,7 +93,7 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
   app.get('/api/auth/me', async (request, reply) => {
     const user = requireUser(request, reply);
     if (!user) return;
-    const account = await db.accountView(user.id);
+    const account = await db.accountView(user.id, new Date());
     return { ...publicUser(user), hasGymCredentials: account.hasGymCredentials };
   });
 
@@ -117,7 +117,7 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
   app.get('/api/account', async (request, reply) => {
     const user = requireUser(request, reply);
     if (!user) return;
-    const account = await db.accountView(user.id);
+    const account = await db.accountView(user.id, new Date());
     return {
       balance: account.balance,
       hasGymCredentials: account.hasGymCredentials,

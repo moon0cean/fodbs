@@ -27,7 +27,12 @@ export type SessionUser = {
   hasGymCredentials?: boolean;
 };
 
-export type Balance = { bookedMinutes: number; playedMinutes: number };
+export type Balance = {
+  effectiveBookedMinutes: number;
+  weekBookedMinutes: number;
+  playedMinutes: number;
+  differenceMinutes: number;
+};
 
 export type Spot = 'front_left' | 'front_right' | 'back';
 
