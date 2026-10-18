@@ -106,19 +106,19 @@ describe('balances and seats', () => {
   ];
 
   it('ignores cancelled reservations and charges the host for a guest court', () => {
-    expect(balanceMinutes(reservations, now, 'Europe/Madrid', 'a')).toEqual({ effectiveBookedMinutes: 60, weekBookedMinutes: 0, playedMinutes: 60, differenceMinutes: 0 });
-    expect(balanceMinutes(reservations, now, 'Europe/Madrid', 'b')).toEqual({ effectiveBookedMinutes: 60, weekBookedMinutes: 0, playedMinutes: 120, differenceMinutes: 60 });
-    expect(balanceMinutes(reservations, now, 'Europe/Madrid')).toEqual({ effectiveBookedMinutes: 120, weekBookedMinutes: 0, playedMinutes: 180, differenceMinutes: 60 });
+    expect(balanceMinutes(reservations, now, 'Europe/Madrid', 'a')).toEqual({ bookedMinutes: 60, weekBookedMinutes: 0, nextWeekBookedMinutes: 0, playedMinutes: 60, differenceMinutes: 0 });
+    expect(balanceMinutes(reservations, now, 'Europe/Madrid', 'b')).toEqual({ bookedMinutes: 60, weekBookedMinutes: 0, nextWeekBookedMinutes: 0, playedMinutes: 120, differenceMinutes: 60 });
+    expect(balanceMinutes(reservations, now, 'Europe/Madrid')).toEqual({ bookedMinutes: 120, weekBookedMinutes: 0, nextWeekBookedMinutes: 0, playedMinutes: 180, differenceMinutes: 60 });
   });
 
-  it('keeps a future seat out of played hours and an empty court out of the effective total', () => {
-    const upcoming = new Date('2026-10-21T16:00:00.000Z');
+  it('counts next week’s empty court as booked and leaves the difference unchanged', () => {
     const rows = [
       ...reservations,
-      { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: upcoming, effective: true, memberIds: ['a'], guestCount: 0 },
+      { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: new Date('2026-10-19T16:00:00.000Z'), effective: true, memberIds: ['a'], guestCount: 0 },
+      { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: new Date('2026-10-21T16:00:00.000Z'), effective: true, memberIds: ['a'], guestCount: 0 },
       { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: new Date('2026-10-22T15:30:00.000Z'), effective: false, memberIds: [], guestCount: 0 },
     ];
-    expect(balanceMinutes(rows, now, 'Europe/Madrid', 'a')).toEqual({ effectiveBookedMinutes: 120, weekBookedMinutes: 0, playedMinutes: 60, differenceMinutes: 0 });
+    expect(balanceMinutes(rows, now, 'Europe/Madrid', 'a')).toEqual({ bookedMinutes: 240, weekBookedMinutes: 0, nextWeekBookedMinutes: 180, playedMinutes: 60, differenceMinutes: 0 });
   });
 
   it('counts this week’s future booking without changing the difference', () => {
@@ -127,7 +127,7 @@ describe('balances and seats', () => {
     const rows = [
       { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: mondayEvening, effective: true, memberIds: ['a'], guestCount: 0 },
     ];
-    expect(balanceMinutes(rows, mondayMorning, 'Europe/Madrid', 'a')).toEqual({ effectiveBookedMinutes: 60, weekBookedMinutes: 60, playedMinutes: 0, differenceMinutes: 0 });
+    expect(balanceMinutes(rows, mondayMorning, 'Europe/Madrid', 'a')).toEqual({ bookedMinutes: 60, weekBookedMinutes: 60, nextWeekBookedMinutes: 0, playedMinutes: 0, differenceMinutes: 0 });
   });
 
   it('moves a player onto an empty box and refuses a taken box', () => {

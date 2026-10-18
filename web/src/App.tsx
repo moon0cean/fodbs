@@ -437,8 +437,9 @@ function BalanceCard({ title, balance }: { title: string; balance: Balance }) {
     <article className="balance">
       <h2>{title}</h2>
       <div className="figures">
-        <p><span>{t('effectiveBooked')}</span><strong>{hours(balance.effectiveBookedMinutes)}</strong></p>
+        <p><span>{t('booked')}</span><strong>{hours(balance.bookedMinutes)}</strong></p>
         <p><span>{t('weekBooked')}</span><strong>{hours(balance.weekBookedMinutes)}</strong></p>
+        <p><span>{t('nextWeekBooked')}</span><strong>{hours(balance.nextWeekBookedMinutes)}</strong></p>
         <p><span>{t('played')}</span><strong>{hours(balance.playedMinutes)}</strong></p>
         <p><span>{t('delta')}</span><strong className={balance.differenceMinutes >= 0 ? 'ahead' : 'behind'}>{signedHours(balance.differenceMinutes)}</strong></p>
       </div>
