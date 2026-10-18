@@ -3,7 +3,7 @@ import { loadConfig, schedulerConfig } from './config.js';
 import { AppDatabase } from './db/index.js';
 import { dirFlow, fixtureFlow } from './gym/gateway.js';
 import { PlaywrightGymGateway } from './gym/playwright.js';
-import { SmtpMailer, UnconfiguredMailer, type Mailer } from './mail.js';
+import { missedBookingMessage, SmtpMailer, UnconfiguredMailer, type Mailer } from './mail.js';
 import { runSchedulerTick, SessionPool } from './scheduler.js';
 import { syncAccountBookings } from './sync.js';
 
@@ -44,6 +44,11 @@ async function tick(): Promise<void> {
       sessions,
       config: schedulerConfig(config),
       log,
+      notifyMiss: async ({ when, emails }) => {
+        if (!mailer.configured()) throw new Error('mail_unconfigured');
+        const message = missedBookingMessage(when);
+        for (const email of emails) await mailer.send({ to: email, ...message });
+      },
     });
     if (gateway.canList()) {
       for (const login of await db.pendingCredentialSync()) {

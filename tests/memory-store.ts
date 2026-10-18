@@ -21,6 +21,7 @@ export class MemoryStore implements SchedulerStore {
   readonly partySizes = new Map<string, 2 | 3>();
   readonly base: AccountCandidate[] = [];
   readonly creds = new Map<string, { username: string; password: string }>();
+  readonly emails = new Map<string, string>();
   readonly reservations: MemoryReservation[] = [];
   private readonly attempts = new Map<string, { status: 'pending' | 'succeeded' | 'failed'; updatedAt: Date }>();
   private seq = 1;
@@ -74,7 +75,25 @@ export class MemoryStore implements SchedulerStore {
   }
 
   async reservationCourtIndexes(occurrenceId: string): Promise<Set<number>> {
-    return new Set(this.reservations.filter((reservation) => reservation.occurrenceId === occurrenceId).map((reservation) => reservation.courtIndex));
+    return new Set(this.reservations.filter((reservation) => reservation.occurrenceId === occurrenceId && reservation.status !== 'cancelled').map((reservation) => reservation.courtIndex));
+  }
+
+  async missRecipients(occurrenceId: string): Promise<string[]> {
+    return (this.optedIn.get(occurrenceId) ?? []).flatMap((userId) => {
+      const email = this.emails.get(userId);
+      return email ? [email] : [];
+    });
+  }
+
+  async claimMiss(occurrenceId: string): Promise<boolean> {
+    const key = `miss:${occurrenceId}`;
+    if (this.attempts.has(key)) return false;
+    this.attempts.set(key, { status: 'succeeded', updatedAt: new Date() });
+    return true;
+  }
+
+  async releaseMiss(occurrenceId: string): Promise<void> {
+    this.attempts.delete(`miss:${occurrenceId}`);
   }
 
   async claimAttempt(key: string, _kind: 'grab' | 'cancel', now: Date): Promise<'claimed' | 'done' | 'busy'> {
@@ -102,6 +121,7 @@ export class MemoryStore implements SchedulerStore {
     courtIndex: number;
     chargedUserId: string;
     externalRef: string;
+    startsAt: Date;
     now: Date;
   }): Promise<void> {
     const occurrence = this.occurrences.get(input.occurrenceId);
@@ -112,7 +132,7 @@ export class MemoryStore implements SchedulerStore {
       chargedUserId: input.chargedUserId,
       externalRef: input.externalRef,
       status: 'held',
-      startsAt: occurrence?.startsAt ?? input.now,
+      startsAt: input.startsAt,
       durationMinutes: occurrence?.durationMinutes ?? 60,
       frontLeft: false,
       frontRight: false,

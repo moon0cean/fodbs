@@ -240,7 +240,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
                   if (!court || !courtHasPlay(court)) return [];
                   return [{
                     occurrenceId: occurrence.id,
-                    label: timeOnly(occurrence.startsAt, lang),
+                    label: timeOnly(court.startsAt ?? occurrence.startsAt, lang),
                     court,
                   }];
                 })}
@@ -499,7 +499,7 @@ function dayMonth(iso: string, lang: Lang): string {
 }
 
 function courtHasPlay(court: Court): boolean {
-  return Boolean(court.reservationId) || court.occupants.length > 0;
+  return Boolean(court.reservationId);
 }
 
 function timeOnly(iso: string, lang: Lang): string {

@@ -66,6 +66,13 @@ export function emptyBonsMessage(): Pick<OutboundMail, 'subject' | 'text'> {
   };
 }
 
+export function missedBookingMessage(when: string): Pick<OutboundMail, 'subject' | 'text'> {
+  return {
+    subject: `No hay pista el ${when}`,
+    text: `FODBS ha probado ${when} y también media hora antes y media hora después, en las pistas. No había sitio, así que no hay ninguna reserva.`,
+  };
+}
+
 export function inviteMessage(link: string): OutboundMail['text'] {
   return [
     'Un administrador te ha invitado a FODBS.',

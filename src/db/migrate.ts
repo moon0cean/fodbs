@@ -83,6 +83,8 @@ create table if not exists seats (
 );
 
 alter table availability add column if not exists declined boolean not null default false;
+alter table reservations add column if not exists starts_at timestamptz;
+update reservations r set starts_at = o.starts_at from occurrences o where r.occurrence_id = o.id and r.starts_at is null;
 alter table reservations add column if not exists host_user_id text;
 alter table reservations add column if not exists effective boolean not null default false;
 

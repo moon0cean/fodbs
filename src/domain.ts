@@ -48,11 +48,20 @@ export type CourtView = {
   courtIndex: number;
   reservationId: string | null;
   status: 'open' | 'pending' | 'skipped' | 'held' | 'cancelled' | 'played';
+  startsAt: string | null;
   occupants: CourtSeat[];
 };
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+
+export function alternateSlots(maxCourts: number): { offsetMinutes: number; courtIndex: number }[] {
+  const slots: { offsetMinutes: number; courtIndex: number }[] = [];
+  for (const offsetMinutes of [0, -30, 30]) {
+    for (let courtIndex = 0; courtIndex < maxCourts; courtIndex += 1) slots.push({ offsetMinutes, courtIndex });
+  }
+  return slots;
+}
 
 export function courtsToBook(optedIn: number, maxCourts: number, maxPerCourt: number): number {
   if (optedIn <= 0) return 0;
@@ -225,6 +234,7 @@ export function buildCourts(input: {
     id: string;
     courtIndex: number;
     status: 'held' | 'cancelled' | 'played';
+    startsAt: Date;
     occupants: CourtSeat[];
   }[];
 }): CourtView[] {
@@ -236,6 +246,7 @@ export function buildCourts(input: {
         courtIndex,
         reservationId: reservation.id,
         status: reservation.status,
+        startsAt: reservation.startsAt.toISOString(),
         occupants: reservation.occupants,
       });
       continue;
@@ -244,7 +255,7 @@ export function buildCourts(input: {
     if (input.courtsTargeted !== null) {
       status = courtIndex < input.courtsTargeted ? 'pending' : 'skipped';
     }
-    courts.push({ courtIndex, reservationId: null, status, occupants: [] });
+    courts.push({ courtIndex, reservationId: null, status, startsAt: null, occupants: [] });
   }
   return courts;
 }

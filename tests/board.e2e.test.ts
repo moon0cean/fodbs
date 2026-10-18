@@ -92,8 +92,8 @@ test('opting in keeps the court pair centered', async () => {
     expect(Math.abs(box.x - (beforeBoxes[index]?.x ?? 0))).toBeLessThan(2);
     if (!box.playing) expect(Math.abs(box.height - (beforeBoxes[index]?.height ?? 0))).toBeLessThan(2);
   });
-  expect(afterBoxes.filter((box) => box.playing).length).toBe(1);
-  expect(await page.locator('.bubble.filled span').first().textContent()).toBe('Admin');
+  expect(afterBoxes.filter((box) => box.playing).length).toBe(0);
+  expect(await page.locator('.bubble.filled').count()).toBe(0);
   expect(await page.locator('.joins').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(1);
   expect(await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(1);
   expect(await page.locator('.squash').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(0);

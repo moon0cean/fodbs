@@ -4,6 +4,7 @@ import {
   balanceMinutes,
   assignOptedIn,
   buildCourts,
+  alternateSlots,
   courtsToBook,
   occurrenceStarts,
   partyDivisor,
@@ -15,6 +16,20 @@ import {
   shouldCancel,
   type ShapedReservation,
 } from '../src/domain.js';
+
+describe('alternateSlots', () => {
+  it('tries every court at the planned time before shifting by 30 minutes', () => {
+    const slots = alternateSlots(4);
+    expect(slots.slice(0, 4)).toEqual([
+      { offsetMinutes: 0, courtIndex: 0 },
+      { offsetMinutes: 0, courtIndex: 1 },
+      { offsetMinutes: 0, courtIndex: 2 },
+      { offsetMinutes: 0, courtIndex: 3 },
+    ]);
+    expect(slots[4]).toEqual({ offsetMinutes: -30, courtIndex: 0 });
+    expect(slots[8]).toEqual({ offsetMinutes: 30, courtIndex: 0 });
+  });
+});
 
 describe('courtsToBook', () => {
   it('books one court per three players and never more than four', () => {
