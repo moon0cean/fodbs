@@ -110,6 +110,10 @@ export function pickAccount(
   return ranked[0]?.candidate ?? null;
 }
 
+export function frontDeadline(startsAt: Date, zone: string): Date {
+  return DateTime.fromJSDate(startsAt, { zone }).startOf('day').minus({ days: 1 }).set({ hour: 23, minute: 55, second: 0, millisecond: 0 }).toJSDate();
+}
+
 export function shouldCancel(input: {
   frontLeft: boolean;
   frontRight: boolean;
@@ -120,9 +124,7 @@ export function shouldCancel(input: {
   penaltyGuardMinutes: number;
 }): boolean {
   if (input.effective || (input.frontLeft && input.frontRight)) return false;
-  const slotDay = DateTime.fromJSDate(input.startsAt, { zone: input.zone }).startOf('day');
-  const nowLocal = DateTime.fromJSDate(input.now, { zone: input.zone });
-  if (nowLocal < slotDay) return false;
+  if (input.now < frontDeadline(input.startsAt, input.zone)) return false;
   const shut = input.startsAt.getTime() - input.penaltyGuardMinutes * MINUTE;
   return input.now.getTime() < shut && input.now.getTime() < input.startsAt.getTime();
 }

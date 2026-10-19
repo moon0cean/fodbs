@@ -8,6 +8,7 @@ import {
   partyDivisor,
   pickAccount,
   redactSecrets,
+  frontDeadline,
   shouldCancel,
   type AccountCandidate,
   type PickExtra,
@@ -250,9 +251,8 @@ export async function runSchedulerTick(input: {
   }
 
   for (const reservation of await store.heldOpen(now)) {
-    const slotDay = DateTime.fromJSDate(reservation.startsAt, { zone: config.zone }).startOf('day');
     const frontsFilled = reservation.frontLeft && reservation.frontRight;
-    if (!reservation.effective && frontsFilled && DateTime.fromJSDate(now, { zone: config.zone }) >= slotDay) {
+    if (!reservation.effective && frontsFilled && now >= frontDeadline(reservation.startsAt, config.zone)) {
       await store.markEffective(reservation.id);
       reservation.effective = true;
     }

@@ -40,14 +40,14 @@ A held court is drawn as a squash court. Two bubbles sit in the front service bo
 
 ### User Story 3 - Cancel unless both front boxes are filled (Priority: P1)
 
-At the start of the slot's local day (the end of the day before), both front bubbles must be occupied by a member or a guest. Otherwise the reservation is cancelled, as long as that instant is still outside the penalty guard. The back bubble can stay empty. Once both front bubbles are filled at or after that deadline, the booking is effective and a later empty back bubble does not cancel it.
+From 23:55 Madrid the evening before the slot, both front bubbles must be occupied by a member or a guest. Otherwise the reservation is cancelled, as long as that instant is still outside the penalty guard. The back bubble can stay empty. Once both front bubbles are filled at or after that deadline, the booking is effective and a later empty back bubble does not cancel it.
 
-**Independent Test**: With the front right empty, a tick before the local midnight does not cancel, a tick after midnight and outside the penalty guard does, and a court with both front boxes filled does not.
+**Independent Test**: With the front right empty, a tick before 23:55 the evening before does not cancel, a tick at 23:55 and outside the penalty guard does, and a court with both front boxes filled does not.
 
 **Acceptance Scenarios**:
 
-1. **Given** a held court missing a front box and the clock still on the previous local day, **When** the worker ticks, **Then** the court stays held.
-2. **Given** the same court after local midnight and before the penalty guard, **When** the worker ticks, **Then** the gateway cancel runs and the reservation is cancelled.
+1. **Given** a held court missing a front box and the clock before 23:55 Madrid the evening before, **When** the worker ticks, **Then** the court stays held.
+2. **Given** the same court at 23:55 that evening and before the penalty guard, **When** the worker ticks, **Then** the gateway cancel runs and the reservation is cancelled.
 3. **Given** both front boxes filled, **When** the deadline has passed, **Then** the court is not cancelled.
 4. **Given** the clock inside the penalty guard, **When** a front box is still empty, **Then** the worker does not call cancel.
 
@@ -69,7 +69,7 @@ The interface is Spanish unless the member switches to English. The choice is re
 - **FR-106**: An invited member who occupies the court MUST be able to add one guest to an empty position on that same court. The guest is a name, or no name. No email is collected. A guest MUST NOT be added when no invited member is on the court.
 - **FR-107**: The last invited member on a court that has a guest MUST NOT be able to leave until the guest is removed.
 - **FR-108**: When a court has at least one guest, booked minutes for the full duration MUST be attributed to the invited host who added a guest, not split. Played minutes MUST count only invited members in a bubble.
-- **FR-109**: At local midnight of the slot day, a held court that is not yet effective and is missing a front occupant MUST be cancelled when the clock is still before the penalty guard. Both front occupants present at that deadline MUST make the booking effective.
+- **FR-109**: From 23:55 Madrid the evening before the slot, a held court that is not yet effective and is missing a front occupant MUST be cancelled when the clock is still before the penalty guard. Both front occupants present at that deadline MUST make the booking effective. A guest in a front box counts as an occupant.
 - **FR-110**: The UI MUST default to Spanish, offer English, and remember the choice. Messages shown for a failed action MUST follow that language. The court cards MUST fill the width of the panel. Their order is Squash 05 top left, 04 top right, 11 bottom left, and 10 bottom right. Below 800px those four courts MUST be a horizontal slider in that same order, one court across the panel, so the member can slide to the next court. Above that they stay side by side. Opting in, or a booking on one court, MUST NOT move or stretch the other card.
 - **FR-111**: A member MUST be able to pause and restore their own account. A paused account can log in, and MUST NOT opt in, take a seat, or be used to book.
 
@@ -84,7 +84,7 @@ The interface is Spanish unless the member switches to English. The choice is re
 
 - **SC-101**: Preference sync and opt-out are stable across a second sync.
 - **SC-102**: A guest cannot exist on a court with no invited member.
-- **SC-103**: Missing a front box after local midnight cancels; filling both front boxes does not.
+- **SC-103**: Missing a front box from 23:55 the evening before cancels; filling both front boxes does not.
 - **SC-104**: `npm test` passes without calling DiR.
 
 ## Assumptions
