@@ -62,7 +62,8 @@ The interface is Spanish unless the member switches to English. The choice is re
 ### Functional Requirements
 
 - **FR-101**: A member MUST be able to save weekdays (ISO 1–7), a preferred `HH:mm`, and a party size of 2 or 3.
-- **FR-102**: An occurrence whose Madrid weekday and time match a member's preference MUST count that member in, unless they have opted out. Once a court is actually booked, opt-in MUST seat that player in opt-in order. A court with no reservation MUST NOT be shown as booked.
+- **FR-102**: An occurrence whose Madrid weekday and time match a member's preference MUST count that member in, unless they have opted out. Once a court is actually booked, opt-in MUST seat that player in opt-in order when that player has linked DiR credentials. A court with no reservation MUST NOT be shown as booked.
+- **FR-112**: A member without linked DiR credentials MUST NOT take a seat directly and MUST NOT be seated by opt-in. They can request one empty spot on a held court. The member whose DiR account is charged for that court receives an email and approves or rejects the request in FODBS. Approval places the requester on that spot. Rejection does not.
 - **FR-103**: Court count MUST use a divisor of 2 when more opted-in members prefer 2 than 3, and 3 otherwise, still capped at 4 courts.
 - **FR-104**: A held court MUST be drawn as a singles squash floor: front wall at the top, the short line across the court, the half-court line from the middle of the short line to the back wall, and a 1.6 m service box on each side wall sitting on the short line. Positions are `front_left` and `front_right` inside those boxes, and `back` behind them toward the back wall. The two boxes are mandatory. `back` is optional.
 - **FR-105**: A member MUST be able to take an empty position and MUST leave any other court of that occurrence.

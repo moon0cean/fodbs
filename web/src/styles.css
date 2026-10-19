@@ -205,6 +205,7 @@ fieldset.days button.on { border-color: var(--ball); }
   line-height: 18px;
 }
 .guest-row { display: grid; gap: 8px; }
+.request-actions { display: flex; gap: 8px; }
 .guest-row p, .guest-remove { color: var(--muted); font-size: 13px; }
 .guest-remove { justify-self: start; }
 .empty { color: var(--muted); }

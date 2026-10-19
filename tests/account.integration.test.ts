@@ -84,6 +84,14 @@ test('a member can pause and restore their own account', async () => {
   expect(restored.statusCode).toBe(200);
   expect(restored.json()).toMatchObject({ active: true });
 
+  const linked = await app.inject({
+    method: 'PUT',
+    url: '/api/account/credentials',
+    cookies,
+    payload: { username: 'member', password: 'club-password' },
+  });
+  expect(linked.statusCode).toBe(204);
+
   const joined = await app.inject({
     method: 'POST',
     url: `/api/occurrences/${occurrenceId}/availability`,

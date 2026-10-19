@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 import { z } from 'zod';
 import type { AppConfig } from './config.js';
 import type { AppDatabase, SessionUser } from './db/index.js';
-import { inviteMessage, type Mailer } from './mail.js';
+import { inviteMessage, seatRequestMessage, type Mailer } from './mail.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { newSecret, sha256 } from './secrets.js';
 
@@ -207,7 +207,34 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     if (!body || !params.success) return fail(reply, 400, 'invalid_body');
     if (body.join && !body.position) return fail(reply, 400, 'invalid_body');
     const error = await db.setSeat(user.id, params.data.id, body.join, body.position ?? null, new Date());
+    if (error === 'requested') {
+      await notifySeatRequest(mailer, config, db, params.data.id, user.id);
+      return reply.code(202).send({ requested: true });
+    }
+    if (error === 'already_requested') return reply.code(202).send({ requested: true });
     if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/reservations/:id/requests/:requestId/:decision', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const params = z.object({
+      id: z.string().min(1),
+      requestId: z.string().min(1),
+      decision: z.enum(['approve', 'reject']),
+    }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.decideSeatRequest(
+      user.id,
+      params.data.id,
+      params.data.requestId,
+      params.data.decision === 'approve',
+      new Date(),
+    );
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error === 'not_owner') return fail(reply, 403, error);
     if (error) return fail(reply, 400, error);
     return reply.code(204).send();
   });
@@ -382,6 +409,27 @@ function requestOrigin(config: AppConfig, request: FastifyRequest): string {
   const forwarded = request.headers['x-forwarded-proto'];
   const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0] || request.protocol;
   return `${proto}://${request.headers.host ?? 'localhost'}`;
+}
+
+const COURT_NUMBERS = ['04', '05', '10', '11', '12'];
+
+async function notifySeatRequest(
+  mailer: Mailer,
+  config: AppConfig,
+  db: AppDatabase,
+  reservationId: string,
+  requesterId: string,
+): Promise<void> {
+  if (!mailer.configured()) return;
+  const notice = await db.seatRequestNotice(reservationId, requesterId);
+  if (!notice) return;
+  const when = DateTime.fromJSDate(notice.startsAt, { zone: config.zone }).setLocale('es').toFormat('cccc d LLLL HH:mm');
+  const message = seatRequestMessage(notice.requesterName, when, COURT_NUMBERS[notice.courtIndex] ?? String(notice.courtIndex));
+  try {
+    await mailer.send({ to: notice.to, ...message });
+  } catch {
+    // The request stays on the court for the holder to approve.
+  }
 }
 
 async function deliverInvite(mailer: Mailer, config: AppConfig, request: FastifyRequest, email: string, token: string): Promise<boolean> {

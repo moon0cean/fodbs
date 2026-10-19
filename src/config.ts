@@ -79,7 +79,7 @@ export function loadConfig(): AppConfig {
     maxCourts: integer('MAX_COURTS', 4),
     maxPlayersPerCourt: integer('MAX_PLAYERS_PER_COURT', 3),
     dirMaxPerDay: integer('DIR_MAX_PER_DAY', 2),
-    dirMaxSimultaneous: integer('DIR_MAX_SIMULTANEOUS', 3),
+    dirMaxSimultaneous: integer('DIR_MAX_SIMULTANEOUS', 4),
     preLoginMinutes: integer('PRELOGIN_MINUTES', 2),
     tickMs: integer('TICK_MS', 15_000),
     zone: process.env.TZ_ZONE ?? 'Europe/Madrid',

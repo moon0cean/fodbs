@@ -16,6 +16,7 @@ describe('renderEnv', () => {
     expect(env).toContain('GYM_BASE_URL=https://pistes.esportiurocafort.com/index.php\n');
     expect(env).toContain('GYM_FLOW=dir\n');
     expect(env).toContain('TZ_ZONE=Europe/Madrid\n');
+    expect(env).toContain('DIR_MAX_SIMULTANEOUS=4\n');
     expect(env).toContain('SMTP_HOST=\n');
     expect(env).toContain('BOOTSTRAP_ADMIN_NAME=Admin\n');
   });

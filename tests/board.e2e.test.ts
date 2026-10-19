@@ -45,7 +45,7 @@ test('opting in keeps the court pair centered', async () => {
   await page.getByLabel('Contraseña').fill(adminPassword);
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await page.getByRole('button', { name: 'Tablero', exact: true }).waitFor();
-  expect(await page.locator('.sub').textContent()).toBe('Reservas de pistas DiR, sin pelearte con el portal.');
+  expect(await page.locator('.sub').textContent()).toBe('Fuck-off DiR booking system');
 
   const created = await page.request.post(`${base}/api/admin/slot-rules`, {
     data: { weekday: target.weekday, startTime: '20:00', durationMinutes: 60, clubCode: 'ROC' },
@@ -55,6 +55,11 @@ test('opting in keeps the court pair centered', async () => {
     data: { weekday: target.weekday, startTime: '21:00', durationMinutes: 60, clubCode: 'ROC' },
   });
   expect(later.ok()).toBe(true);
+
+  const linked = await page.request.put(`${base}/api/account/credentials`, {
+    data: { username: 'member', password: 'club-password' },
+  });
+  expect(linked.ok()).toBe(true);
 
   const iso = target.toISODate() ?? '';
   await page.locator(`[data-date="${iso}"]`).click();
