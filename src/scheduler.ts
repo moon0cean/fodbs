@@ -126,7 +126,7 @@ export async function runSchedulerTick(input: {
 
   for (const occurrence of upcoming) {
     if (occurrence.courtsTargeted !== null) continue;
-    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays);
+    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays, config.zone);
     const warmAt = new Date(openAt.getTime() - config.preLoginMinutes * MINUTE);
     if (now < warmAt || now >= openAt) continue;
     const optedIn = await store.optedInPlayers(occurrence.id);
@@ -154,7 +154,7 @@ export async function runSchedulerTick(input: {
   }
 
   for (const occurrence of upcoming) {
-    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays);
+    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays, config.zone);
     if (now < openAt) continue;
     let targeted = occurrence.courtsTargeted;
     if (targeted === null) {
