@@ -15,12 +15,14 @@ export function CourtCard({
   courtIndex,
   times,
   meId,
+  canBook,
   onChange,
   onError,
 }: {
   courtIndex: number;
   times: CourtTime[];
   meId: string;
+  canBook: boolean;
   onChange: () => void;
   onError: (value: string) => void;
 }) {
@@ -48,7 +50,7 @@ export function CourtCard({
           </div>
         )}
       </div>
-      <SquashCourt court={court} meId={meId} onChange={onChange} onError={onError} />
+      <SquashCourt court={court} meId={meId} canBook={canBook} onChange={onChange} onError={onError} />
     </article>
   );
 }
@@ -56,16 +58,19 @@ export function CourtCard({
 function SquashCourt({
   court,
   meId,
+  canBook,
   onChange,
   onError,
 }: {
   court: Court;
   meId: string;
+  canBook: boolean;
   onChange: () => void;
   onError: (value: string) => void;
 }) {
   const { t, explain } = useI18n();
   const [guestName, setGuestName] = useState('');
+  const [notice, setNotice] = useState('');
   const joinable = court.status === 'held' && court.reservationId;
   const mine = court.occupants.some((occupant) => occupant.userId === meId);
   const nextEmpty = SPOTS.find((spot) => !court.occupants.some((occupant) => occupant.position === spot));
@@ -78,10 +83,23 @@ function SquashCourt({
     if (!court.reservationId) return;
     const current = occupant(spot);
     const join = current?.userId !== meId;
-    void api(`/api/reservations/${court.reservationId}/seats`, {
+    void api<{ requested?: boolean }>(`/api/reservations/${court.reservationId}/seats`, {
       method: 'POST',
       body: JSON.stringify({ join, position: spot }),
-    }).then(onChange).catch((reason: unknown) => onError(text(reason, explain)));
+    }).then((result) => {
+      setNotice(result?.requested ? t('requestSentCourt') : '');
+      onChange();
+    }).catch((reason: unknown) => onError(text(reason, explain)));
+  }
+
+  function decide(requestId: string, decision: 'approve' | 'reject') {
+    if (!court.reservationId) return;
+    void api(`/api/reservations/${court.reservationId}/requests/${requestId}/${decision}`, { method: 'POST' })
+      .then(() => {
+        setNotice('');
+        onChange();
+      })
+      .catch((reason: unknown) => onError(text(reason, explain)));
   }
 
   function removeGuest(occupantId: string) {
@@ -133,6 +151,19 @@ function SquashCourt({
           );
         })}
       </div>
+      {joinable && !canBook && !mine && <p className="notice">{t('seatRequestHint')}</p>}
+      {notice && <p className="notice" role="status">{notice}</p>}
+      {court.requests?.map((request) => (
+        <div key={request.id} className="guest-row">
+          <p>{request.displayName} · {t('requestPending')}</p>
+          {court.ownerId === meId && (
+            <div className="request-actions">
+              <button className="solid" type="button" onClick={() => decide(request.id, 'approve')}>{t('approve')}</button>
+              <button type="button" onClick={() => decide(request.id, 'reject')}>{t('reject')}</button>
+            </div>
+          )}
+        </div>
+      ))}
       {joinable && mine && nextEmpty && (
         <form
           className="guest-row"

@@ -45,12 +45,21 @@ export type Occupant = {
   displayName: string;
 };
 
+export type SeatRequest = {
+  id: string;
+  userId: string;
+  displayName: string;
+  position: string;
+};
+
 export type Court = {
   courtIndex: number;
   reservationId: string | null;
   status: 'open' | 'pending' | 'skipped' | 'held' | 'cancelled' | 'played';
   startsAt: string | null;
   occupants: Occupant[];
+  ownerId?: string | null;
+  requests?: SeatRequest[];
 };
 
 export type Dashboard = {

@@ -34,6 +34,7 @@ import {
   occurrences,
   playerPreferences,
   reservations,
+  seatRequests,
   seats,
   sessions,
   slotRules,
@@ -469,11 +470,13 @@ export class AppDatabase implements SchedulerStore {
       .filter((occ) => occ.startsAt >= day.toJSDate() && occ.startsAt < next.toJSDate())
       .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
     const avail = await this.db.select().from(availability);
+    const credentialIds = new Set((await this.db.select({ userId: gymCredentials.userId }).from(gymCredentials)).map((row) => row.userId));
     const names = new Map(people.map((person) => [person.id, person.displayName]));
     const allUsers = await this.db.select({ id: users.id, displayName: users.displayName }).from(users);
     for (const person of allUsers) names.set(person.id, person.displayName);
     const reservationRows = await this.db.select().from(reservations);
     const seatRows = await this.db.select().from(seats);
+    const pendingRequests = await this.db.select().from(seatRequests).where(eq(seatRequests.status, 'pending'));
     const preferenceRows = await this.db.select().from(playerPreferences);
     const partySize = new Map(preferenceRows.map((row) => [row.userId, row.partySize === 2 ? 2 as const : 3 as const]));
     const me = people.find((person) => person.id === userId) ?? (await this.requireUser(userId));
@@ -491,7 +494,7 @@ export class AppDatabase implements SchedulerStore {
       occurrences: dayOccs.map((occ) => {
         const activeIds = new Set(people.map((person) => person.id));
         const opted = avail
-          .filter((row) => row.occurrenceId === occ.id && !row.declined && activeIds.has(row.userId))
+          .filter((row) => row.occurrenceId === occ.id && !row.declined && activeIds.has(row.userId) && credentialIds.has(row.userId))
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
         const occReservations = reservationRows.filter((row) => row.occurrenceId === occ.id);
         return {
@@ -528,7 +531,18 @@ export class AppDatabase implements SchedulerStore {
                   })),
               })),
             }),
-          }),
+          }).map((court) => ({
+            ...court,
+            ownerId: reservationRows.find((row) => row.id === court.reservationId)?.chargedUserId ?? null,
+            requests: pendingRequests
+              .filter((row) => row.reservationId === court.reservationId)
+              .map((row) => ({
+                id: row.id,
+                userId: row.userId,
+                displayName: names.get(row.userId) ?? '',
+                position: row.position,
+              })),
+          })),
         };
       }),
     };
@@ -537,6 +551,10 @@ export class AppDatabase implements SchedulerStore {
   async setAvailability(userId: string, occurrenceId: string, optedIn: boolean, now: Date): Promise<string | null> {
     const user = await this.requireUser(userId);
     if (!user.active) return 'inactive';
+    if (optedIn) {
+      const creds = await this.db.select().from(gymCredentials).where(eq(gymCredentials.userId, userId)).limit(1);
+      if (creds.length === 0) return 'credentials_required';
+    }
     const occ = await this.occurrence(occurrenceId);
     if (!occ) return 'missing';
     if (now.getTime() >= occ.startsAt.getTime()) return 'started';
@@ -572,6 +590,10 @@ export class AppDatabase implements SchedulerStore {
     if (join && !position) return 'invalid_body';
     const occ = await this.occurrence(current.occurrenceId);
     if (!occ) return 'missing';
+    if (join && position) {
+      const creds = await this.db.select().from(gymCredentials).where(eq(gymCredentials.userId, userId)).limit(1);
+      if (creds.length === 0) return this.createSeatRequest(user, current, position, occ.startsAt, now);
+    }
     const group = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, occ.id));
     const seatRows = await this.db.select().from(seats);
     const changed = placeMember({
@@ -593,6 +615,8 @@ export class AppDatabase implements SchedulerStore {
   }
 
   private async seatOptIn(user: { id: string; active: boolean }, occurrenceId: string, now: Date): Promise<void> {
+    const creds = await this.db.select().from(gymCredentials).where(eq(gymCredentials.userId, user.id)).limit(1);
+    if (creds.length === 0) return;
     const occ = await this.occurrence(occurrenceId);
     if (!occ) return;
     const group = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, occurrenceId));
@@ -646,6 +670,105 @@ export class AppDatabase implements SchedulerStore {
     if (!changed.ok) return changed.error;
     await this.db.transaction(async (tx) => {
       await this.persistShapes(tx, changed.reservations, now);
+    });
+    return null;
+  }
+
+  private async createSeatRequest(
+    user: { id: string; active: boolean },
+    reservation: { id: string; status: string },
+    position: Spot,
+    startsAt: Date,
+    now: Date,
+  ): Promise<string> {
+    if (!user.active) return 'inactive';
+    if (reservation.status !== 'held') return 'not_held';
+    if (now.getTime() >= startsAt.getTime()) return 'started';
+    const takenSeat = await this.db.select().from(seats).where(and(
+      eq(seats.reservationId, reservation.id),
+      eq(seats.position, position),
+    )).limit(1);
+    if (takenSeat.length > 0) return 'taken';
+    const pending = await this.db.select().from(seatRequests).where(and(
+      eq(seatRequests.reservationId, reservation.id),
+      eq(seatRequests.userId, user.id),
+      eq(seatRequests.status, 'pending'),
+    )).limit(1);
+    const existing = pending[0];
+    if (existing) {
+      if (existing.position !== position) {
+        await this.db.update(seatRequests).set({ position }).where(eq(seatRequests.id, existing.id));
+      }
+      return 'already_requested';
+    }
+    await this.db.insert(seatRequests).values({
+      id: randomUUID(),
+      reservationId: reservation.id,
+      userId: user.id,
+      position,
+      status: 'pending',
+      createdAt: now,
+      resolvedAt: null,
+    });
+    return 'requested';
+  }
+
+  async seatRequestNotice(reservationId: string, requesterId: string): Promise<{
+    to: string;
+    requesterName: string;
+    startsAt: Date;
+    courtIndex: number;
+  } | null> {
+    const reservation = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+    const current = reservation[0];
+    if (!current) return null;
+    const owner = await this.requireUser(current.chargedUserId);
+    const requester = await this.requireUser(requesterId);
+    const occ = await this.occurrence(current.occurrenceId);
+    return {
+      to: owner.email,
+      requesterName: requester.displayName,
+      startsAt: current.startsAt ?? occ?.startsAt ?? new Date(),
+      courtIndex: current.courtIndex,
+    };
+  }
+
+  async decideSeatRequest(actorId: string, reservationId: string, requestId: string, approve: boolean, now: Date): Promise<string | null> {
+    const reservation = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+    const current = reservation[0];
+    if (!current) return 'missing';
+    if (current.chargedUserId !== actorId) return 'not_owner';
+    const pending = await this.db.select().from(seatRequests).where(and(
+      eq(seatRequests.id, requestId),
+      eq(seatRequests.reservationId, reservationId),
+      eq(seatRequests.status, 'pending'),
+    )).limit(1);
+    const request = pending[0];
+    if (!request) return 'missing';
+    if (!approve) {
+      await this.db.update(seatRequests).set({ status: 'rejected', resolvedAt: now }).where(eq(seatRequests.id, request.id));
+      return null;
+    }
+    const requester = await this.requireUser(request.userId);
+    const occ = await this.occurrence(current.occurrenceId);
+    if (!occ) return 'missing';
+    const group = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, occ.id));
+    const seatRows = await this.db.select().from(seats);
+    const changed = placeMember({
+      reservations: group.map((row) => this.shapeReservation(row, seatRows)),
+      actorId: requester.id,
+      actorActive: requester.active,
+      targetId: reservationId,
+      position: request.position as Spot,
+      join: true,
+      now,
+      startsAt: occ.startsAt,
+      seatId: randomUUID(),
+    });
+    if (!changed.ok) return changed.error;
+    await this.db.transaction(async (tx) => {
+      await this.persistShapes(tx, changed.reservations, now);
+      await tx.update(seatRequests).set({ status: 'approved', resolvedAt: now }).where(eq(seatRequests.id, request.id));
     });
     return null;
   }
@@ -842,6 +965,7 @@ export class AppDatabase implements SchedulerStore {
       .select({ userId: availability.userId, partySize: playerPreferences.partySize })
       .from(availability)
       .innerJoin(users, eq(users.id, availability.userId))
+      .innerJoin(gymCredentials, eq(gymCredentials.userId, availability.userId))
       .leftJoin(playerPreferences, eq(playerPreferences.userId, availability.userId))
       .where(and(eq(availability.occurrenceId, occurrenceId), eq(availability.declined, false), eq(users.active, true)));
     return rows.map((row) => ({ userId: row.userId, partySize: row.partySize === 2 ? 2 : 3 }));

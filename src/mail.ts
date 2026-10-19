@@ -73,6 +73,13 @@ export function missedBookingMessage(when: string): Pick<OutboundMail, 'subject'
   };
 }
 
+export function seatRequestMessage(requesterName: string, when: string, court: string): Pick<OutboundMail, 'subject' | 'text'> {
+  return {
+    subject: `${requesterName} pide una plaza`,
+    text: `${requesterName} quiere jugar el ${when} en la pista ${court}. Entra en FODBS para aprobar la solicitud o rechazarla.`,
+  };
+}
+
 export function inviteMessage(link: string): OutboundMail['text'] {
   return [
     'Un administrador te ha invitado a FODBS.',

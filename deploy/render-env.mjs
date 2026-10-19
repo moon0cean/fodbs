@@ -31,7 +31,7 @@ export function renderEnv(input) {
     MAX_COURTS: '4',
     MAX_PLAYERS_PER_COURT: '3',
     DIR_MAX_PER_DAY: '2',
-    DIR_MAX_SIMULTANEOUS: '3',
+    DIR_MAX_SIMULTANEOUS: '4',
     PRELOGIN_MINUTES: '2',
     TICK_MS: '15000',
     TZ_ZONE: 'Europe/Madrid',

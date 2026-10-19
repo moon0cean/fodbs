@@ -110,6 +110,16 @@ export const reservations = pgTable(
   (table) => [uniqueIndex('reservations_occ_court_idx').on(table.occurrenceId, table.courtIndex)],
 );
 
+export const seatRequests = pgTable('seat_requests', {
+  id: text('id').primaryKey(),
+  reservationId: text('reservation_id').notNull().references(() => reservations.id),
+  userId: text('user_id').notNull().references(() => users.id),
+  position: text('position').notNull(),
+  status: text('status').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+});
+
 export const seats = pgTable('seats', {
   id: text('id').primaryKey(),
   reservationId: text('reservation_id').notNull().references(() => reservations.id),

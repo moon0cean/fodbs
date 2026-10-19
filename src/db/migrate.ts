@@ -136,6 +136,17 @@ create table if not exists access_requests (
 );
 create unique index if not exists access_requests_pending_email_idx on access_requests (email) where status = 'pending';
 
+create table if not exists seat_requests (
+  id text primary key,
+  reservation_id text not null references reservations(id),
+  user_id text not null references users(id),
+  position text not null,
+  status text not null check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null,
+  resolved_at timestamptz
+);
+create unique index if not exists seat_requests_pending_idx on seat_requests (reservation_id, user_id) where status = 'pending';
+
 create table if not exists booking_attempts (
   idempotency_key text primary key,
   kind text not null check (kind in ('grab', 'cancel')),
