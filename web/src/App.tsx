@@ -205,7 +205,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
         ))}
       </div>
       {!me.active && <p className="banner">{t('pausedHint')}</p>}
-      {me.active && !me.hasGymCredentials && <p className="notice">{t('seatRequestHint')}</p>}
+      {me.active && !data.me.hasGymCredentials && <p className="notice">{t('seatRequestHint')}</p>}
       {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
       <div className="joins">
         {data.occurrences.filter((occurrence) => !occurrence.courts.some((court) => court.reservationId)).map((occurrence) => (
@@ -214,7 +214,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
             <button
               className={occurrence.myOptIn ? 'solid' : ''}
               type="button"
-              disabled={!me.active || !me.hasGymCredentials}
+              disabled={!me.active || !data.me.hasGymCredentials}
               onClick={() => {
                 if (!me.active) return;
                 void api(`/api/occurrences/${occurrence.id}/availability`, {
@@ -236,7 +236,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
                 key={courtIndex}
                 courtIndex={courtIndex}
                 meId={me.id}
-                canBook={Boolean(me.hasGymCredentials)}
+                canBook={data.me.hasGymCredentials}
                 times={data.occurrences.flatMap((occurrence) => {
                   const court = occurrence.courts.find((item) => item.courtIndex === courtIndex);
                   if (!court || !courtHasPlay(court)) return [];
