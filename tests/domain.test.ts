@@ -82,12 +82,13 @@ describe('shouldCancel', () => {
   const startsAt = new Date('2026-10-24T17:00:00.000Z');
   const zone = 'Europe/Madrid';
 
-  it('cancels after local midnight when a front box is empty, and not inside the penalty guard', () => {
+  it('cancels a single player from 23:55 the evening before, and not inside the penalty guard', () => {
     const missing = { frontLeft: true, frontRight: false, effective: false, startsAt, zone, penaltyGuardMinutes: 20 };
-    expect(shouldCancel({ ...missing, now: new Date('2026-10-23T20:00:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...missing, now: new Date('2026-10-23T21:54:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...missing, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(true);
     expect(shouldCancel({ ...missing, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(true);
-    expect(shouldCancel({ ...missing, frontRight: true, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(false);
-    expect(shouldCancel({ ...missing, effective: true, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...missing, frontRight: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...missing, effective: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
     expect(shouldCancel({ ...missing, now: new Date('2026-10-24T16:50:00.000Z') })).toBe(false);
   });
 });
