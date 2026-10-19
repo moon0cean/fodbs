@@ -387,8 +387,8 @@ export function redactInviteUrl(url: string): string {
   return url.replace(/\/invite\/[^/?#]+/g, '/invite/[redacted]');
 }
 
-export function horizonOpenAt(startsAt: Date, horizonDays: number): Date {
-  return new Date(startsAt.getTime() - horizonDays * DAY);
+export function horizonOpenAt(startsAt: Date, horizonDays: number, zone: string): Date {
+  return DateTime.fromJSDate(startsAt, { zone }).startOf('day').minus({ days: horizonDays }).toJSDate();
 }
 
 export function notePick(extra: PickExtra, userId: string): void {

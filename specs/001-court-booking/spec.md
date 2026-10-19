@@ -82,7 +82,7 @@ played minutes with the reservation rows.
 ### User Story 4 - Grab at the horizon and cancel empty courts (Priority: P1)
 
 Admins define a weekly slot. Members who are in before the horizon opens are
-counted. At `start - horizon` the worker books `min(4, ceil(optedIn / 3))`
+counted. At 00:00 Madrid, `horizonDays` before the slot's date, the worker books `min(4, ceil(optedIn / 3))`
 courts on DiR. The account used is the eligible member with the lowest
 charge minus play who is still under the gym quota. The charge includes
 future courts. Play counts only after the reservation has started. Sessions
@@ -158,7 +158,7 @@ confirm those admin routes are rejected.
 - **FR-009**: Joining a second court of the same slot MUST move the member off the first court.
 - **FR-010**: The balance MUST show total booked hours, hours booked this week that have not started, hours booked next week that have not started, hours played, and the difference, for each member and for the group. Total booked minutes are the duration of every non-cancelled reservation charged to that account, including a future court that is not yet effective; a court with a guest is charged to its host. This week and next week are the current and following Monday–Sunday weeks in Madrid, and only reservations that have not started. Played minutes are the duration of non-cancelled reservations that have already started and on which that member sits; a future seat does not count, and the group total counts every seated member. The difference is played minutes minus the booked minutes of reservations that have already started. A future booking MUST NOT change the difference. A cancelled reservation MUST add nothing.
 - **FR-011**: At the horizon opening the worker MUST freeze the court count at `min(maxCourts, ceil(optedIn / maxPerCourt))` using who was in at that instant, defaulting to 4 courts and 3 players.
-- **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
+- **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The opening is 00:00 Madrid on the day `horizonDays` before the slot's Madrid date. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
 - **FR-021**: A grab MUST try every court at the planned time, then the same search 30 minutes earlier and 30 minutes later, staying on the same Madrid day. The reservation MUST record the time that was actually booked, and the board MUST show a court time only for a real reservation. When every try is unavailable, FODBS MUST email the opted-in members once and MUST NOT present any court as booked.
 - **FR-022**: An imported gym booking at the same Madrid start, duration, and club as a weekly slot MUST count as that slot. FODBS MUST keep one occurrence for that time, MUST show only the courts that are actually reserved, and MUST NOT grab another court once the targeted count is already reserved.
 - **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 3), the worker MUST choose the lowest charge minus play. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started.

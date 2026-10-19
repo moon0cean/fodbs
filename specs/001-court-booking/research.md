@@ -26,7 +26,7 @@ collective activities open 5 days ahead, with 2 bookings per day, 3
 simultaneous holds, and cancellation until 20 minutes before start. A fifth
 late cancel or no-show in 30 days freezes booking for 7 days.
 
-**Decision**: Horizon defaults to 7 days. Daily cap defaults to 2. Simultaneous
+**Decision**: Horizon defaults to 7 days, and the grab opens at 00:00 Madrid on that day, not at the slot's clock time. Daily cap defaults to 2. Simultaneous
 cap defaults to 3. Cancel lead defaults to 3 hours. Penalty guard defaults to
 20 minutes: inside that guard the worker does not cancel, because a late
 cancel risks the freeze. All five numbers are environment configuration so a

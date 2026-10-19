@@ -13,6 +13,7 @@ import {
   placeMember,
   redactInviteUrl,
   redactSecrets,
+  horizonOpenAt,
   shouldCancel,
   type ShapedReservation,
 } from '../src/domain.js';
@@ -75,6 +76,13 @@ describe('partyDivisor', () => {
     expect(partyDivisor([2, 2, 3])).toBe(2);
     expect(partyDivisor([3, 3, 2])).toBe(3);
     expect(partyDivisor([])).toBe(3);
+  });
+});
+
+describe('horizon opening', () => {
+  it('opens at midnight Madrid one week before the slot day', () => {
+    const startsAt = new Date('2026-10-26T16:00:00.000Z');
+    expect(horizonOpenAt(startsAt, 7, 'Europe/Madrid').toISOString()).toBe('2026-10-18T22:00:00.000Z');
   });
 });
 
