@@ -82,8 +82,8 @@ test('a visitor request is approved from the admin table', async () => {
   await page.getByRole('button', { name: 'Eliminar', exact: true }).waitFor();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const shell = await page.locator('.admin-shell').boundingBox();
-  const nav = await page.locator('.admin-nav').boundingBox();
+  const shell = await page.locator('.section-shell').boundingBox();
+  const nav = await page.locator('.section-nav').boundingBox();
   expect(shell).toBeTruthy();
   expect(nav).toBeTruthy();
   expect(nav!.width).toBeGreaterThan(shell!.width - 8);
