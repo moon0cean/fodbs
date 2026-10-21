@@ -78,14 +78,26 @@ async function tick(): Promise<void> {
 }
 
 await tick();
-const timer = setInterval(() => {
-  void tick();
+let timer: NodeJS.Timeout | undefined;
+
+async function loop(): Promise<void> {
+  await tick();
+  if (stopped) return;
+  const settings = await db.schedulerSettings();
+  const delay = (settings?.tickSeconds ?? Math.round(config.tickMs / 1000)) * 1000;
+  timer = setTimeout(() => {
+    void loop();
+  }, delay);
+}
+
+timer = setTimeout(() => {
+  void loop();
 }, config.tickMs);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopped = true;
-    clearInterval(timer);
+    if (timer) clearTimeout(timer);
     void sessions.closeAll().then(() => db.close()).then(() => process.exit(0));
   });
 }

@@ -10,6 +10,7 @@ export class FakeGymGateway implements GymGateway {
   failBooks = false;
   unavailable = new Set<string>();
   bons: number | null = null;
+  inspects = 0;
 
   ready(): boolean {
     return true;
@@ -35,6 +36,12 @@ export class FakeGymGateway implements GymGateway {
       startsAt: request.startsAt.toISOString(),
     });
     return { externalRef };
+  }
+
+  async inspect(_session: GymSession, request: GymBookRequest): Promise<'free' | 'busy'> {
+    this.inspects += 1;
+    if (this.unavailable.has(`${request.courtIndex}|${request.startsAt.toISOString()}`)) return 'busy';
+    return 'free';
   }
 
   async cancel(_session: GymSession, externalRef: string): Promise<void> {

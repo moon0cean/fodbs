@@ -27,6 +27,7 @@ export interface GymGateway {
   canList(): boolean;
   openSession(login: GymLogin): Promise<GymSession>;
   book(session: GymSession, request: GymBookRequest): Promise<{ externalRef: string }>;
+  inspect(session: GymSession, request: GymBookRequest): Promise<'free' | 'busy'>;
   cancel(session: GymSession, externalRef: string): Promise<void>;
   listBookings(session: GymSession): Promise<GymListedBooking[]>;
   listBons(session: GymSession): Promise<number | null>;

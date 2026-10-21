@@ -105,6 +105,24 @@ export class PlaywrightGymGateway implements GymGateway {
     return { externalRef };
   }
 
+  async inspect(session: GymSession, request: GymBookRequest): Promise<'free' | 'busy'> {
+    if (!isRocafortUrl(this.options.flow.loginUrl)) return 'free';
+    const page = browserPage(session);
+    const origin = originOf(this.options.flow.loginUrl);
+    const url = fase2Url(origin, request.courtIndex, request.startsAt, this.zone());
+    if (!url) return 'busy';
+    await page.goto(url);
+    const end = page.locator('#HoraFinal');
+    let free = false;
+    if (await end.count() > 0) {
+      const endValue = endClock(request.startsAt, request.durationMinutes, this.zone());
+      const offered = await end.locator('option').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('value')));
+      free = offered.includes(endValue);
+    }
+    await page.goto(`${origin}/ReservesLlista.php`).catch(() => undefined);
+    return free ? 'free' : 'busy';
+  }
+
   async cancel(session: GymSession, externalRef: string): Promise<void> {
     if (isRocafortUrl(this.options.flow.loginUrl)) {
       const page = browserPage(session);

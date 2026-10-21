@@ -168,6 +168,39 @@ export class MemoryStore implements SchedulerStore {
     const reservation = this.reservations.find((item) => item.id === id);
     if (reservation && reservation.status !== 'played') reservation.status = 'cancelled';
   }
+
+  settings: {
+    horizonDays: number;
+    tickSeconds: number;
+    tryOffset: boolean;
+    availabilityEnabled: boolean;
+    availabilityAccountId: string | null;
+    availabilityIntervalHours: number;
+    availabilityCheckedAt: Date | null;
+  } | null = null;
+
+  readonly checks: { occurrenceId: string; courtIndex: number; free: boolean }[] = [];
+
+  async schedulerSettings() {
+    return this.settings;
+  }
+
+  async saveCourtChecks(rows: { occurrenceId: string; courtIndex: number; free: boolean; checkedAt: Date }[]): Promise<void> {
+    for (const row of rows) {
+      const index = this.checks.findIndex((item) => item.occurrenceId === row.occurrenceId && item.courtIndex === row.courtIndex);
+      const next = { occurrenceId: row.occurrenceId, courtIndex: row.courtIndex, free: row.free };
+      if (index >= 0) this.checks[index] = next;
+      else this.checks.push(next);
+    }
+  }
+
+  async requestSync(): Promise<boolean> {
+    return false;
+  }
+
+  async markAvailabilityChecked(now: Date): Promise<void> {
+    if (this.settings) this.settings.availabilityCheckedAt = now;
+  }
 }
 
 export function testConfig(overrides: Partial<SchedulerConfig> = {}): SchedulerConfig {

@@ -65,12 +65,41 @@ export type CourtView = {
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
-export function alternateSlots(maxCourts: number): { offsetMinutes: number; courtIndex: number }[] {
+export function slotsToTry(maxCourts: number, tryOffset: boolean): { offsetMinutes: number; courtIndex: number }[] {
   const slots: { offsetMinutes: number; courtIndex: number }[] = [];
-  for (const offsetMinutes of [0, -30, 30]) {
+  for (const offsetMinutes of tryOffset ? [0, -30, 30] : [0]) {
     for (let courtIndex = 0; courtIndex < maxCourts; courtIndex += 1) slots.push({ offsetMinutes, courtIndex });
   }
   return slots;
+}
+
+export function alternateSlots(maxCourts: number): { offsetMinutes: number; courtIndex: number }[] {
+  return slotsToTry(maxCourts, true);
+}
+
+export function groupCourtCounts(
+  reservations: { status: string; startsAt: Date }[],
+  now: Date,
+  zone: string,
+): { weekRemaining: number; nextWeek: number; played: number } {
+  const local = DateTime.fromJSDate(now, { zone });
+  const weekStart = local.startOf('day').minus({ days: local.weekday - 1 });
+  const weekEnd = weekStart.plus({ weeks: 1 });
+  const nextWeekEnd = weekEnd.plus({ weeks: 1 });
+  let weekRemaining = 0;
+  let nextWeek = 0;
+  let played = 0;
+  for (const reservation of reservations) {
+    if (reservation.status === 'cancelled') continue;
+    if (reservation.startsAt.getTime() <= now.getTime()) {
+      played += 1;
+      continue;
+    }
+    const start = DateTime.fromJSDate(reservation.startsAt, { zone });
+    if (start >= weekStart && start < weekEnd) weekRemaining += 1;
+    else if (start >= weekEnd && start < nextWeekEnd) nextWeek += 1;
+  }
+  return { weekRemaining, nextWeek, played };
 }
 
 export function courtsToBook(optedIn: number, maxCourts: number, maxPerCourt: number): number {

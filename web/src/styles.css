@@ -36,6 +36,8 @@ button.on, button.solid { background: var(--ball); color: var(--ink); }
 .lede { color: var(--muted); }
 form { display: grid; gap: 12px; max-width: 420px; }
 label { display: grid; gap: 6px; color: var(--muted); }
+label.check { display: flex; align-items: center; gap: 8px; }
+label.check input { width: auto; min-height: 0; }
 input, select { background: #2a241e; border: 1px solid #4a4036; border-radius: 12px; padding: 12px; color: var(--paper); min-height: 44px; width: 100%; }
 fieldset.days { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 fieldset.days legend { width: 100%; color: var(--muted); }
@@ -51,15 +53,16 @@ fieldset.days button.on { border-color: var(--ball); }
   font-weight: 650;
 }
 
-.panel { padding-bottom: 64px; }
-.summary { display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; margin: 18px 0; }
-.balance, .roster, .slot, .account section, .admin section {
+.panel { padding-bottom: 40px; }
+.summary { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin: 12px 0; }
+.balance, .roster, .slot, .section-main section {
   background: rgba(255, 248, 236, 0.04);
   border: 1px solid rgba(243, 234, 215, 0.12);
-  border-radius: 22px;
-  padding: 18px;
+  border-radius: 16px;
+  padding: 12px 14px;
 }
-.figures { display: flex; flex-wrap: wrap; gap: 18px 22px; }
+.section-main h2, .balance h2, .roster h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.figures { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .figures p { margin: 0; min-width: 7.5rem; }
 .figures span, .court-label em, .ledger em { display: block; color: var(--muted); font-style: normal; font-size: 13px; }
 .figures strong, h2 { font-family: Fraunces, Georgia, serif; font-weight: 560; }
@@ -78,7 +81,7 @@ fieldset.days button.on { border-color: var(--ball); }
 .joins { display: grid; gap: 8px; margin-bottom: 12px; }
 .join { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .join strong { font-family: Fraunces, Georgia, serif; font-weight: 560; }
-.bons { margin: 0; font-family: Fraunces, serif; font-size: 42px; line-height: 1; }
+.bons { margin: 0 0 8px; font-family: Fraunces, serif; font-size: 32px; line-height: 1; }
 .date { scroll-snap-align: start; min-width: 84px; display: grid; background: #2a241e; border-radius: 16px; padding: 10px; }
 .date.on { background: var(--paper); color: var(--ink); }
 .date span { color: var(--muted); font-size: 12px; }
@@ -95,17 +98,17 @@ fieldset.days button.on { border-color: var(--ball); }
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 10px;
 }
 .squash {
   min-width: 0;
   align-content: start;
   overflow: hidden;
-  border-radius: 18px;
-  padding: 12px;
+  border-radius: 14px;
+  padding: 10px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   background: rgba(255, 248, 236, 0.04);
   border: 1px solid rgba(243, 234, 215, 0.12);
 }
@@ -204,15 +207,17 @@ fieldset.days button.on { border-color: var(--ball); }
   font-size: 14px;
   line-height: 18px;
 }
+.checks p, .openings { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wizard { margin: 8px 0 12px; }
 .guest-row { display: grid; gap: 8px; }
 .request-actions { display: flex; gap: 8px; }
 .guest-row p, .guest-remove { color: var(--muted); font-size: 13px; }
 .guest-remove { justify-self: start; }
 .empty { color: var(--muted); }
-.account, .admin-main { display: grid; gap: 16px; }
-.admin-shell { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; align-items: start; }
-.admin-nav { display: grid; gap: 6px; }
-.admin-nav button { justify-content: flex-start; border-color: #6d6458; text-align: left; }
+.section-main { display: grid; gap: 12px; }
+.section-shell { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 12px; align-items: start; }
+.section-nav { display: grid; gap: 4px; }
+.section-nav button { justify-content: flex-start; border-color: #6d6458; text-align: left; min-height: 40px; padding: 8px 12px; }
 .data { width: 100%; border-collapse: collapse; }
 .data th, .data td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(243, 234, 215, 0.12); vertical-align: middle; }
 .data th { color: var(--muted); font-size: 13px; font-weight: 520; }
@@ -239,8 +244,8 @@ fieldset.days button.on { border-color: var(--ball); }
   .top { flex-direction: column; align-items: start; }
   .ledger li { flex-wrap: wrap; }
   .slot-layout { width: 100%; }
-  .admin-shell { grid-template-columns: 1fr; }
-  .admin-nav { display: flex; overflow-x: auto; }
+  .section-shell { grid-template-columns: 1fr; }
+  .section-nav { display: flex; overflow-x: auto; }
   .data { display: block; overflow-x: auto; }
   .courts {
     display: flex;

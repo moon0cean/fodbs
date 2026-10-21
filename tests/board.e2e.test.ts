@@ -132,11 +132,13 @@ test('courts slide sideways on a phone', async () => {
 
 test('the account page pauses and restores the signed-in member', async () => {
   await page.getByRole('button', { name: 'Cuenta', exact: true }).click();
+  await page.getByRole('button', { name: 'Estado', exact: true }).click();
   await page.getByRole('button', { name: 'Pausar cuenta', exact: true }).click();
   await page.getByText('La cuenta está en pausa').waitFor();
   await page.getByRole('button', { name: 'Tablero', exact: true }).click();
   await page.getByText('La cuenta está en pausa').waitFor();
   await page.getByRole('button', { name: 'Cuenta', exact: true }).click();
+  await page.getByRole('button', { name: 'Estado', exact: true }).click();
   await page.getByRole('button', { name: 'Activar cuenta', exact: true }).click();
   await page.getByText('La cuenta está activa').waitFor();
 });

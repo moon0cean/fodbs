@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { DateTime } from 'luxon';
 import { z } from 'zod';
+import { searchOpenings } from './booking.js';
 import type { AppConfig } from './config.js';
 import type { AppDatabase, SessionUser } from './db/index.js';
+import type { GymGateway } from './gym/gateway.js';
 import { inviteMessage, seatRequestMessage, type Mailer } from './mail.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { newSecret, sha256 } from './secrets.js';
@@ -40,6 +42,30 @@ const preferenceBody = z.object({
   preferredTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   partySize: z.union([z.literal(2), z.literal(3)]),
 });
+const preferredBody = z.object({
+  players: z.array(z.object({
+    userId: z.string().min(1).nullable(),
+    guestName: z.string().max(40).nullable(),
+  })).max(4),
+});
+const searchBody = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  durationMinutes: z.union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
+});
+const confirmBody = z.object({
+  startsAt: z.string().min(16),
+  courtIndex: z.number().int().min(0).max(4),
+  durationMinutes: z.union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
+});
+const schedulerBody = z.object({
+  horizonDays: z.number().int().min(1).max(14),
+  tickSeconds: z.number().int().min(5).max(3600),
+  tryOffset: z.boolean(),
+  availabilityEnabled: z.boolean(),
+  availabilityAccountId: z.string().min(1).nullable(),
+  availabilityIntervalHours: z.number().int().min(1).max(48),
+});
 
 const inviteBody = z.object({
   role: z.enum(['admin', 'member']).default('member'),
@@ -54,7 +80,7 @@ const slotBody = z.object({
   clubCode: z.string().trim().min(1).max(32),
 });
 
-export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: AppConfig, mailer: Mailer): void {
+export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: AppConfig, mailer: Mailer, gateway: GymGateway): void {
   app.decorateRequest('user', null);
 
   app.addHook('onRequest', async (request) => {
@@ -123,6 +149,8 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
       hasGymCredentials: account.hasGymCredentials,
       gymUsername: account.gymUsername,
       preferences: account.preferences,
+      companions: account.companions,
+      preferred: account.preferred,
       active: user.active,
       reservations: account.reservations.map((reservation) => ({
         ...reservation,
@@ -167,6 +195,91 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     if (!body) return fail(reply, 400, 'invalid_body');
     await db.savePreferences({ ...body, userId: user.id, now: new Date() });
     return reply.code(204).send();
+  });
+
+  app.put('/api/account/preferred', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(preferredBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.savePreferred(user.id, body.players);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/bookings/search', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(searchBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    const startsAt = DateTime.fromISO(`${body.date}T${body.time}`, { zone: config.zone }).toJSDate();
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now()) return fail(reply, 400, 'started');
+    const creds = await db.credentials(user.id);
+    if (!creds) return fail(reply, 400, 'no_credentials');
+    if (!gateway.ready()) return fail(reply, 400, 'gym_flow_unconfigured');
+    const settings = await db.schedulerSettings();
+    const session = await gateway.openSession(creds);
+    try {
+      return await searchOpenings({
+        gateway,
+        session,
+        zone: config.zone,
+        now: new Date(),
+        maxCourts: Math.min(config.maxCourts, 4),
+        tryOffset: settings?.tryOffset ?? true,
+        startsAt,
+        durationMinutes: body.durationMinutes,
+        clubCode: 'ROC',
+      });
+    } finally {
+      await gateway.close(session);
+    }
+  });
+
+  app.post('/api/bookings/confirm', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(confirmBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    const startsAt = new Date(body.startsAt);
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now()) return fail(reply, 400, 'started');
+    const creds = await db.credentials(user.id);
+    if (!creds) return fail(reply, 400, 'no_credentials');
+    const candidates = await db.candidates(startsAt, new Date());
+    const mine = candidates.find((candidate) => candidate.userId === user.id);
+    if (!mine) return fail(reply, 400, 'no_credentials');
+    if (mine.bookingsOnDay >= config.dirMaxPerDay) return fail(reply, 400, 'daily_cap');
+    if (mine.simultaneousHeld >= config.dirMaxSimultaneous) return fail(reply, 400, 'simultaneous_cap');
+    if (!gateway.ready()) return fail(reply, 400, 'gym_flow_unconfigured');
+    const session = await gateway.openSession(creds);
+    try {
+      const booked = await gateway.book(session, {
+        clubCode: 'ROC',
+        courtIndex: body.courtIndex,
+        startsAt,
+        durationMinutes: body.durationMinutes,
+      });
+      try {
+        const error = await db.bookManual({
+          userId: user.id,
+          courtIndex: body.courtIndex,
+          startsAt,
+          durationMinutes: body.durationMinutes,
+          externalRef: booked.externalRef,
+          now: new Date(),
+        });
+        if (error) {
+          await gateway.cancel(session, booked.externalRef).catch(() => undefined);
+          return fail(reply, 400, error);
+        }
+        await db.requestSync(user.id);
+      } catch (error) {
+        await gateway.cancel(session, booked.externalRef).catch(() => undefined);
+        throw error;
+      }
+      return reply.code(201).send({ externalRef: booked.externalRef });
+    } finally {
+      await gateway.close(session);
+    }
   });
 
   app.get('/api/dashboard', async (request, reply) => {
@@ -391,6 +504,31 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     if (!body || !params.success) return fail(reply, 400, 'invalid_body');
     const updated = await db.setSlotRuleActive(params.data.id, body.active);
     if (!updated) return fail(reply, 404, 'missing');
+    return reply.code(204).send();
+  });
+
+  app.get('/api/admin/scheduler', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const stored = await db.schedulerSettings();
+    const users = await db.listUsers();
+    return {
+      settings: stored ?? {
+        horizonDays: config.horizonDays,
+        tickSeconds: Math.max(5, Math.round(config.tickMs / 1000)),
+        tryOffset: true,
+        availabilityEnabled: false,
+        availabilityAccountId: null,
+        availabilityIntervalHours: 6,
+      },
+      accounts: users.filter((person) => person.hasGymCredentials).map((person) => ({ id: person.id, displayName: person.displayName })),
+    };
+  });
+
+  app.put('/api/admin/scheduler', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const body = parse(schedulerBody, request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.saveSchedulerSettings(body);
     return reply.code(204).send();
   });
 }

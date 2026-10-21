@@ -1,6 +1,5 @@
 import { DateTime } from 'luxon';
 import {
-  alternateSlots,
   courtsToBook,
   horizonOpenAt,
   madridDate,
@@ -8,6 +7,7 @@ import {
   partyDivisor,
   pickAccount,
   redactSecrets,
+  slotsToTry,
   frontDeadline,
   shouldCancel,
   type AccountCandidate,
@@ -70,6 +70,18 @@ export interface SchedulerStore {
   }[]>;
   markEffective(id: string): Promise<void>;
   markCancelled(id: string, now: Date): Promise<void>;
+  schedulerSettings(): Promise<{
+    horizonDays: number;
+    tickSeconds: number;
+    tryOffset: boolean;
+    availabilityEnabled: boolean;
+    availabilityAccountId: string | null;
+    availabilityIntervalHours: number;
+    availabilityCheckedAt: Date | null;
+  } | null>;
+  saveCourtChecks(rows: { occurrenceId: string; courtIndex: number; free: boolean; checkedAt: Date }[]): Promise<void>;
+  markAvailabilityChecked(now: Date): Promise<void>;
+  requestSync(userId: string): Promise<boolean>;
 }
 
 export class SessionPool {
@@ -119,6 +131,9 @@ export async function runSchedulerTick(input: {
     return;
   }
 
+  const settings = await store.schedulerSettings();
+  const horizonDays = settings?.horizonDays ?? config.horizonDays;
+  const slots = slotsToTry(config.maxCourts, settings?.tryOffset ?? true);
   const upcoming = await store.listUpcoming(now);
   const limits = { perDay: config.dirMaxPerDay, simultaneous: config.dirMaxSimultaneous };
   const keep = new Set<string>();
@@ -126,7 +141,7 @@ export async function runSchedulerTick(input: {
 
   for (const occurrence of upcoming) {
     if (occurrence.courtsTargeted !== null) continue;
-    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays, config.zone);
+    const openAt = horizonOpenAt(occurrence.startsAt, horizonDays, config.zone);
     const warmAt = new Date(openAt.getTime() - config.preLoginMinutes * MINUTE);
     if (now < warmAt || now >= openAt) continue;
     const optedIn = await store.optedInPlayers(occurrence.id);
@@ -154,7 +169,7 @@ export async function runSchedulerTick(input: {
   }
 
   for (const occurrence of upcoming) {
-    const openAt = horizonOpenAt(occurrence.startsAt, config.horizonDays, config.zone);
+    const openAt = horizonOpenAt(occurrence.startsAt, horizonDays, config.zone);
     if (now < openAt) continue;
     let targeted = occurrence.courtsTargeted;
     if (targeted === null) {
@@ -170,7 +185,7 @@ export async function runSchedulerTick(input: {
     let pendingRetry = false;
     let transient = false;
     const day = madridDate(occurrence.startsAt, config.zone);
-    for (const slot of alternateSlots(config.maxCourts)) {
+    for (const slot of slots) {
       if (secured >= targeted || transient) break;
       if (taken.has(slot.courtIndex)) continue;
       const startsAt = new Date(occurrence.startsAt.getTime() + slot.offsetMinutes * MINUTE);
@@ -218,6 +233,7 @@ export async function runSchedulerTick(input: {
         taken.add(slot.courtIndex);
         secured += 1;
         await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
+        await store.requestSync(account.userId);
         log({
           msg: 'booked',
           occurrenceId: occurrence.id,
@@ -300,7 +316,66 @@ export async function runSchedulerTick(input: {
     }
   }
 
+  await inspectAvailability({ now, store, gateway, sessions, config, settings, horizonDays, keep, log });
   await sessions.retainOnly(keep);
+}
+
+async function inspectAvailability(input: {
+  now: Date;
+  store: SchedulerStore;
+  gateway: GymGateway;
+  sessions: SessionPool;
+  config: SchedulerConfig;
+  settings: Awaited<ReturnType<SchedulerStore['schedulerSettings']>>;
+  horizonDays: number;
+  keep: Set<string>;
+  log: (event: Record<string, unknown>) => void;
+}): Promise<void> {
+  const { now, store, gateway, sessions, config, settings, horizonDays, keep, log } = input;
+  if (!settings?.availabilityEnabled || !settings.availabilityAccountId) return;
+  const checkedAt = settings.availabilityCheckedAt;
+  if (checkedAt && now.getTime() - checkedAt.getTime() < settings.availabilityIntervalHours * 60 * MINUTE) return;
+  const creds = await store.credentials(settings.availabilityAccountId);
+  if (!creds) return;
+  keep.add(settings.availabilityAccountId);
+  let session: GymSession;
+  try {
+    session = await sessions.get(settings.availabilityAccountId, creds);
+  } catch (error) {
+    log({
+      msg: 'availability_login_failed',
+      userId: settings.availabilityAccountId,
+      detail: redactSecrets(errorText(error), [creds.username, creds.password]),
+    });
+    return;
+  }
+  const rows: { occurrenceId: string; courtIndex: number; free: boolean; checkedAt: Date }[] = [];
+  for (const occurrence of await store.listUpcoming(now)) {
+    if (now < horizonOpenAt(occurrence.startsAt, horizonDays, config.zone)) continue;
+    const taken = await store.reservationCourtIndexes(occurrence.id);
+    if (taken.size >= config.maxCourts) continue;
+    for (let courtIndex = 0; courtIndex < config.maxCourts; courtIndex += 1) {
+      if (taken.has(courtIndex)) continue;
+      try {
+        const free = await gateway.inspect(session, {
+          clubCode: occurrence.clubCode,
+          courtIndex,
+          startsAt: occurrence.startsAt,
+          durationMinutes: occurrence.durationMinutes,
+        });
+        rows.push({ occurrenceId: occurrence.id, courtIndex, free: free === 'free', checkedAt: now });
+      } catch (error) {
+        log({
+          msg: 'availability_failed',
+          occurrenceId: occurrence.id,
+          courtIndex,
+          detail: redactSecrets(errorText(error), [creds.username, creds.password]),
+        });
+      }
+    }
+  }
+  if (rows.length > 0) await store.saveCourtChecks(rows);
+  await store.markAvailabilityChecked(now);
 }
 
 function errorText(error: unknown): string {

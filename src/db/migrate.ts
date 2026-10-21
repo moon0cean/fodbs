@@ -147,6 +147,34 @@ create table if not exists seat_requests (
 );
 create unique index if not exists seat_requests_pending_idx on seat_requests (reservation_id, user_id) where status = 'pending';
 
+create table if not exists preferred_players (
+  id text primary key,
+  user_id text not null references users(id),
+  target_user_id text references users(id),
+  guest_name text,
+  position integer not null
+);
+create unique index if not exists preferred_players_user_position_idx on preferred_players (user_id, position);
+
+create table if not exists scheduler_settings (
+  id text primary key,
+  horizon_days integer not null,
+  tick_seconds integer not null,
+  try_offset boolean not null,
+  availability_enabled boolean not null,
+  availability_account_id text references users(id),
+  availability_interval_hours integer not null,
+  availability_checked_at timestamptz
+);
+
+create table if not exists court_checks (
+  occurrence_id text not null references occurrences(id),
+  court_index integer not null,
+  free boolean not null,
+  checked_at timestamptz not null,
+  primary key (occurrence_id, court_index)
+);
+
 create table if not exists booking_attempts (
   idempotency_key text primary key,
   kind text not null check (kind in ('grab', 'cancel')),

@@ -235,4 +235,53 @@ describe('scheduler', () => {
     expect(gateway.bookings).toHaveLength(0);
     await sessions.closeAll();
   });
+
+  it('stays on the planned time when the offset is switched off', async () => {
+    const store = primedStore();
+    store.settings = {
+      horizonDays: 7,
+      tickSeconds: 15,
+      tryOffset: false,
+      availabilityEnabled: false,
+      availabilityAccountId: null,
+      availabilityIntervalHours: 6,
+      availabilityCheckedAt: null,
+    };
+    store.occurrences.set('occ', { id: 'occ', startsAt: START, durationMinutes: 60, clubCode: 'ROC', courtsTargeted: 1 });
+    store.optedIn.set('occ', ['p1']);
+    const gateway = new FakeGymGateway();
+    for (let courtIndex = 0; courtIndex < 4; courtIndex += 1) {
+      gateway.unavailable.add(`${courtIndex}|${START.toISOString()}`);
+    }
+    const sessions = new SessionPool(gateway);
+    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig(), log: () => undefined });
+    expect(gateway.bookings).toHaveLength(0);
+    await sessions.closeAll();
+  });
+
+  it('records free and busy courts without booking them', async () => {
+    const store = primedStore();
+    store.settings = {
+      horizonDays: 7,
+      tickSeconds: 15,
+      tryOffset: true,
+      availabilityEnabled: true,
+      availabilityAccountId: 'a',
+      availabilityIntervalHours: 6,
+      availabilityCheckedAt: null,
+    };
+    store.occurrences.set('occ', { id: 'occ', startsAt: START, durationMinutes: 60, clubCode: 'ROC', courtsTargeted: null });
+    store.optedIn.set('occ', []);
+    const gateway = new FakeGymGateway();
+    gateway.unavailable.add(`0|${START.toISOString()}`);
+    const sessions = new SessionPool(gateway);
+    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig(), log: () => undefined });
+    expect(gateway.bookings).toHaveLength(0);
+    expect(store.checks.find((check) => check.courtIndex === 0)?.free).toBe(false);
+    expect(store.checks.filter((check) => check.free)).toHaveLength(3);
+    const seen = gateway.inspects;
+    await runSchedulerTick({ now: new Date(OPEN.getTime() + 1000), store, gateway, sessions, config: testConfig(), log: () => undefined });
+    expect(gateway.inspects).toBe(seen);
+    await sessions.closeAll();
+  });
 });

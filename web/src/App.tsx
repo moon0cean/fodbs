@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type SessionUser } from './api';
+import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type Opening, type SessionUser } from './api';
 import { AdminScreen } from './Admin';
 import { CourtCard } from './Court';
 import { courtNumber } from './courts';
@@ -170,20 +170,23 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
   return (
     <main className="panel">
       <section className="summary">
-        <BalanceCard title={t('groupBalance')} balance={data.globalBalance} />
+        <article className="balance">
+          <h2>{t('groupBalance')}</h2>
+          <div className="figures">
+            <p><span>{t('weekCourts')}</span><strong>{data.group.weekRemaining}</strong></p>
+            <p><span>{t('nextWeekCourts')}</span><strong>{data.group.nextWeek}</strong></p>
+            <p><span>{t('playedCourts')}</span><strong>{data.group.played}</strong></p>
+          </div>
+        </article>
         <div className="roster">
           <h2>{t('activePlayers')}</h2>
           <ul>
-            {data.activeUsers.map((user) => {
-              const delta = user.differenceMinutes;
-              return (
-                <li key={user.id}>
-                  <span className="avatar">{initials(user.displayName)}</span>
-                  <span>{user.displayName}</span>
-                  <strong className={delta >= 0 ? 'ahead' : 'behind'}>{signedHours(delta)}</strong>
-                </li>
-              );
-            })}
+            {data.activeUsers.map((user) => (
+              <li key={user.id}>
+                <span className="avatar">{initials(user.displayName)}</span>
+                <span>{user.displayName}</span>
+              </li>
+            ))}
           </ul>
         </div>
       </section>
@@ -206,6 +209,19 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       </div>
       {!me.active && <p className="banner">{t('pausedHint')}</p>}
       {me.active && !data.me.hasGymCredentials && <p className="notice">{t('seatRequestHint')}</p>}
+      {data.me.hasGymCredentials && <BookWizard date={data.date} onBooked={() => load(data.date)} onError={onError} />}
+      {data.occurrences.some((occurrence) => occurrence.checks.length > 0) && (
+        <div className="checks">
+          {data.occurrences.filter((occurrence) => occurrence.checks.length > 0).map((occurrence) => (
+            <p key={occurrence.id}>
+              <strong>{timeOnly(occurrence.startsAt, lang)}</strong>
+              {occurrence.checks.map((check) => (
+                <span key={check.courtIndex}>{t('court')} {courtNumber(check.courtIndex)} {check.free ? t('freeCourt') : t('busyCourt')}</span>
+              ))}
+            </p>
+          ))}
+        </div>
+      )}
       {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
       <div className="joins">
         {data.occurrences.filter((occurrence) => !occurrence.courts.some((court) => court.reservationId)).map((occurrence) => (
@@ -268,6 +284,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   const [syncing, setSyncing] = useState(false);
   const [syncedNote, setSyncedNote] = useState(false);
   const [active, setActive] = useState(true);
+  const [section, setSection] = useState<'hours' | 'club' | 'play' | 'status'>('hours');
   const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
   const [preferredTime, setPreferredTime] = useState('19:00');
   const [partySize, setPartySize] = useState<2 | 3>(3);
@@ -291,9 +308,44 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
 
   if (!account) return <main className="panel">{t('accountOpening')}</main>;
 
+  const sections = [
+    { id: 'hours' as const, label: t('yourBalance') },
+    { id: 'club' as const, label: t('credentials') },
+    { id: 'play' as const, label: t('playShape') },
+    { id: 'status' as const, label: t('status') },
+  ];
+
   return (
-    <main className="panel account">
+    <main className="panel">
+      {error && <p className="banner">{error}</p>}
+      <div className="section-shell">
+        <nav className="section-nav" aria-label={t('account')}>
+          {sections.map((item) => (
+            <button key={item.id} type="button" className={section === item.id ? 'on' : ''} onClick={() => setSection(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="section-main">
+      {section === 'hours' && (
+      <>
       <BalanceCard title={t('yourBalance')} balance={account.balance} />
+      <section>
+      <h2>{t('bookedOnYou')}</h2>
+      {account.reservations.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
+      <ul className="ledger">
+        {account.reservations.map((reservation) => (
+          <li key={reservation.id}>
+            <span>{clock(reservation.startsAt, lang)} · {t('court')} {courtNumber(reservation.courtIndex)}</span>
+            <em>{status(reservation.status)}</em>
+            <strong>{hours(reservation.durationMinutes)}</strong>
+          </li>
+        ))}
+      </ul>
+      </section>
+      </>
+      )}
+      {section === 'club' && (
       <section>
         <h2>{t('bons')}</h2>
         <p className="bons">{account.bonsRemaining == null ? t('bonsUnknown') : account.bonsRemaining}</p>
@@ -327,9 +379,33 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
           {syncing ? t('syncing') : t('syncNow')}
         </button>
         {syncedNote && <p className="notice" role="status">{t('synced')}</p>}
+        <h2>{t('credentials')}</h2>
+        <p>{t('sealed')}</p>
+        <p>{t('syncHint')}</p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError('');
+            setCredsSaved(false);
+            api('/api/account/credentials', { method: 'PUT', body: JSON.stringify({ username, password }) })
+              .then(() => {
+                setPassword('');
+                setCredsSaved(true);
+                load();
+              })
+              .catch((reason: unknown) => setError(message(reason, explain)));
+          }}
+        >
+          <label>{t('identifier')}<input value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+          <label>{t('password')}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <button className="solid" type="submit">{t('replaceCredentials')}</button>
+          {credsSaved && <p className="notice" role="status">{t('saved')}</p>}
+        </form>
       </section>
+      )}
+      {section === 'status' && (
       <section>
-        <h2>{t('account')}</h2>
+        <h2>{t('status')}</h2>
         <p>{active ? t('activeHint') : t('pausedHint')}</p>
         <button
           className="solid"
@@ -347,6 +423,9 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
           {active ? t('pauseAccount') : t('restoreAccount')}
         </button>
       </section>
+      )}
+      {section === 'play' && (
+      <section>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -392,46 +471,173 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         <button className="solid" type="submit">{t('savePlay')}</button>
         {playSaved && <p className="notice" role="status">{t('saved')}</p>}
       </form>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError('');
-          setCredsSaved(false);
-          api('/api/account/credentials', { method: 'PUT', body: JSON.stringify({ username, password }) })
-            .then(() => {
-              setPassword('');
-              setCredsSaved(true);
-              load();
-            })
-            .catch((reason: unknown) => setError(message(reason, explain)));
-        }}
-      >
-        <h2>{t('credentials')}</h2>
-        <p>{t('sealed')}</p>
-        <p>{t('syncHint')}</p>
-        <label>{t('identifier')}<input value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
-        <label>{t('password')}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {error && <p className="banner">{error}</p>}
-        <button className="solid" type="submit">{t('replaceCredentials')}</button>
-        {credsSaved && <p className="notice" role="status">{t('saved')}</p>}
-      </form>
-      <section>
-        <h2>{t('bookedOnYou')}</h2>
-        {account.reservations.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
-        <ul className="ledger">
-          {account.reservations.map((reservation) => (
-            <li key={reservation.id}>
-              <span>{clock(reservation.startsAt, lang)} · {t('court')} {courtNumber(reservation.courtIndex)}</span>
-              <em>{status(reservation.status)}</em>
-              <strong>{hours(reservation.durationMinutes)}</strong>
-            </li>
-          ))}
-        </ul>
+      <PreferredForm account={account} onSaved={load} onError={setError} />
       </section>
+      )}
+        </div>
+      </div>
     </main>
   );
 }
 
+
+function BookWizard({ date, onBooked, onError }: { date: string; onBooked: () => void; onError: (value: string) => void }) {
+  const { t, lang, explain } = useI18n();
+  const [time, setTime] = useState('18:00');
+  const [duration, setDuration] = useState<30 | 60 | 90 | 120>(60);
+  const [exact, setExact] = useState<Opening[]>([]);
+  const [alternatives, setAlternatives] = useState<Opening[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  function confirm(opening: Opening) {
+    setBusy(true);
+    setSaved(false);
+    onError('');
+    void api('/api/bookings/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ startsAt: opening.startsAt, courtIndex: opening.courtIndex, durationMinutes: duration }),
+    }).then(() => {
+      setSaved(true);
+      setExact([]);
+      setAlternatives([]);
+      setSearched(false);
+      onBooked();
+    }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
+  }
+
+  return (
+    <form
+      className="wizard"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setBusy(true);
+        setSaved(false);
+        onError('');
+        void api<{ exact: Opening[]; alternatives: Opening[] }>('/api/bookings/search', {
+          method: 'POST',
+          body: JSON.stringify({ date, time, durationMinutes: duration }),
+        }).then((result) => {
+          setExact(result.exact);
+          setAlternatives(result.alternatives);
+          setSearched(true);
+        }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
+      }}
+    >
+      <h2>{t('bookCourt')}</h2>
+      <label>{t('preferredTime')}<input type="time" value={time} onChange={(event) => setTime(event.target.value)} required /></label>
+      <label>{t('duration')}
+        <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 30 | 60 | 90 | 120)}>
+          {[30, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes}</option>)}
+        </select>
+      </label>
+      <button className="solid" type="submit" disabled={busy || !date}>{busy ? t('setting') : t('searchCourts')}</button>
+      {saved && <p className="notice" role="status">{t('bookingSaved')}</p>}
+      {searched && exact.length === 0 && alternatives.length === 0 && <p className="empty">{t('noneFree')}</p>}
+      <OpeningList title={t('exactSlots')} openings={exact} lang={lang} disabled={busy} onPick={confirm} />
+      <OpeningList title={t('otherSlots')} openings={alternatives} lang={lang} disabled={busy} onPick={confirm} />
+    </form>
+  );
+}
+
+function OpeningList({ title, openings, lang, disabled, onPick }: {
+  title: string;
+  openings: Opening[];
+  lang: Lang;
+  disabled: boolean;
+  onPick: (opening: Opening) => void;
+}) {
+  const { t } = useI18n();
+  if (openings.length === 0) return null;
+  return (
+    <div className="openings">
+      <h3>{title}</h3>
+      {openings.map((opening) => (
+        <button key={`${opening.courtIndex}-${opening.startsAt}`} type="button" disabled={disabled} onClick={() => onPick(opening)}>
+          {t('court')} {courtNumber(opening.courtIndex)} · {timeOnly(opening.startsAt, lang)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PreferredForm({ account, onSaved, onError }: { account: Account; onSaved: () => void; onError: (value: string) => void }) {
+  const { t, explain } = useI18n();
+  const [players, setPlayers] = useState(account.preferred.map((player) => ({ userId: player.userId, guestName: player.guestName, displayName: player.displayName })));
+  const [memberId, setMemberId] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setPlayers(account.preferred.map((player) => ({ userId: player.userId, guestName: player.guestName, displayName: player.displayName })));
+  }, [account]);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onError('');
+        setSaved(false);
+        void api('/api/account/preferred', {
+          method: 'PUT',
+          body: JSON.stringify({ players: players.map((player) => ({ userId: player.userId, guestName: player.guestName })) }),
+        }).then(() => {
+          setSaved(true);
+          onSaved();
+        }).catch((reason: unknown) => onError(message(reason, explain)));
+      }}
+    >
+      <h2>{t('preferredPlayers')}</h2>
+      <p>{t('preferredHint')}</p>
+      <ul className="ledger">
+        {players.map((player, index) => (
+          <li key={`${player.userId ?? player.guestName}-${index}`}>
+            <span>{player.displayName}</span>
+            <button type="button" onClick={() => setPlayers((current) => current.filter((_, item) => item !== index))}>{t('remove')}</button>
+          </li>
+        ))}
+      </ul>
+      <label>{t('memberPick')}
+        <select value={memberId} onChange={(event) => setMemberId(event.target.value)}>
+          <option value="" />
+          {account.companions.filter((person) => !players.some((player) => player.userId === person.id)).map((person) => (
+            <option key={person.id} value={person.id}>{person.displayName}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        disabled={!memberId || players.length >= 4}
+        onClick={() => {
+          const person = account.companions.find((item) => item.id === memberId);
+          if (!person) return;
+          setPlayers((current) => [...current, { userId: person.id, guestName: null, displayName: person.displayName }]);
+          setMemberId('');
+          setSaved(false);
+        }}
+      >
+        {t('addPlayer')}
+      </button>
+      <label>{t('guest')}
+        <input value={guestName} maxLength={40} onChange={(event) => setGuestName(event.target.value)} />
+      </label>
+      <button
+        type="button"
+        disabled={!guestName.trim() || players.length >= 4}
+        onClick={() => {
+          setPlayers((current) => [...current, { userId: null, guestName: guestName.trim(), displayName: guestName.trim() }]);
+          setGuestName('');
+          setSaved(false);
+        }}
+      >
+        {t('addGuest')}
+      </button>
+      <button className="solid" type="submit">{t('savePlay')}</button>
+      {saved && <p className="notice" role="status">{t('saved')}</p>}
+    </form>
+  );
+}
 
 function BalanceCard({ title, balance }: { title: string; balance: Balance }) {
   const { t } = useI18n();
