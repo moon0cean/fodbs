@@ -7,11 +7,13 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppConfig } from './config.js';
 import { AppDatabase } from './db/index.js';
 import { redactInviteUrl } from './domain.js';
+import { dirFlow, fixtureFlow, type GymGateway } from './gym/gateway.js';
+import { PlaywrightGymGateway } from './gym/playwright.js';
 import { registerRoutes } from './http.js';
 import { SmtpMailer, UnconfiguredMailer, type Mailer } from './mail.js';
 import { hashPassword } from './passwords.js';
 
-export async function buildApp(config: AppConfig, options?: { logger?: boolean; mailer?: Mailer }): Promise<{ app: FastifyInstance; db: AppDatabase }> {
+export async function buildApp(config: AppConfig, options?: { logger?: boolean; mailer?: Mailer; gateway?: GymGateway }): Promise<{ app: FastifyInstance; db: AppDatabase }> {
   const app = Fastify({
     logger: options?.logger === false
       ? false
@@ -67,7 +69,14 @@ export async function buildApp(config: AppConfig, options?: { logger?: boolean; 
         from: config.smtpFrom,
       })
     : new UnconfiguredMailer());
-  registerRoutes(app, db, config, mailer);
+  const flow = config.gymFlow === 'fixture' ? fixtureFlow(config.gymBaseUrl) : dirFlow(config.gymBaseUrl);
+  const gateway = options?.gateway ?? new PlaywrightGymGateway({
+    flow,
+    headless: config.gymHeadless,
+    noSandbox: config.playwrightNoSandbox,
+    zone: config.zone,
+  });
+  registerRoutes(app, db, config, mailer, gateway);
 
   const webDist = path.resolve('web/dist');
   if (existsSync(webDist)) {

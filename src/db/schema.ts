@@ -129,6 +129,36 @@ export const seats = pgTable('seats', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
 });
 
+export const preferredPlayers = pgTable('preferred_players', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id),
+  targetUserId: text('target_user_id').references(() => users.id),
+  guestName: text('guest_name'),
+  position: integer('position').notNull(),
+});
+
+export const schedulerSettings = pgTable('scheduler_settings', {
+  id: text('id').primaryKey(),
+  horizonDays: integer('horizon_days').notNull(),
+  tickSeconds: integer('tick_seconds').notNull(),
+  tryOffset: boolean('try_offset').notNull(),
+  availabilityEnabled: boolean('availability_enabled').notNull(),
+  availabilityAccountId: text('availability_account_id').references(() => users.id),
+  availabilityIntervalHours: integer('availability_interval_hours').notNull(),
+  availabilityCheckedAt: timestamp('availability_checked_at', { withTimezone: true, mode: 'date' }),
+});
+
+export const courtChecks = pgTable(
+  'court_checks',
+  {
+    occurrenceId: text('occurrence_id').notNull().references(() => occurrences.id),
+    courtIndex: integer('court_index').notNull(),
+    free: boolean('free').notNull(),
+    checkedAt: timestamp('checked_at', { withTimezone: true, mode: 'date' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.occurrenceId, table.courtIndex] })],
+);
+
 export const bookingAttempts = pgTable('booking_attempts', {
   idempotencyKey: text('idempotency_key').primaryKey(),
   kind: text('kind').notNull(),

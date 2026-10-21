@@ -62,9 +62,16 @@ export type Court = {
   requests?: SeatRequest[];
 };
 
+export type GroupCourts = { weekRemaining: number; nextWeek: number; played: number };
+
+export type Opening = { courtIndex: number; startsAt: string; offsetMinutes: number };
+
+export type PreferredPlayer = { id: string; userId: string | null; guestName: string | null; displayName: string };
+
 export type Dashboard = {
   activeUsers: ({ id: string; displayName: string } & Balance)[];
   globalBalance: Balance;
+  group: GroupCourts;
   me: { id: string; displayName: string; role: 'admin' | 'member'; hasGymCredentials: boolean };
   dates: string[];
   date: string;
@@ -76,6 +83,7 @@ export type Dashboard = {
     courtsTargeted: number | null;
     optedIn: { id: string; displayName: string }[];
     myOptIn: boolean;
+    checks: { courtIndex: number; free: boolean }[];
     courts: Court[];
   }[];
 };
@@ -89,6 +97,8 @@ export type Account = {
   bonsCheckedAt: string | null;
   syncedAt: string | null;
   preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
+  companions: { id: string; displayName: string }[];
+  preferred: PreferredPlayer[];
   reservations: {
     id: string;
     startsAt: string;

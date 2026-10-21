@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   addGuest,
   balanceMinutes,
+  groupCourtCounts,
+  slotsToTry,
   assignOptedIn,
   buildCourts,
   alternateSlots,
@@ -128,6 +130,18 @@ describe('balances and seats', () => {
       { chargedUserId: 'a', hostUserId: null, status: 'held', durationMinutes: 60, startsAt: new Date('2026-10-22T15:30:00.000Z'), effective: false, memberIds: [], guestCount: 0 },
     ];
     expect(balanceMinutes(rows, now, 'Europe/Madrid', 'a')).toEqual({ bookedMinutes: 240, weekBookedMinutes: 0, nextWeekBookedMinutes: 180, playedMinutes: 60, differenceMinutes: 0 });
+  });
+
+  it('counts group courts once, this week, next week, and already started', () => {
+    const mondayMorning = new Date('2026-10-19T08:00:00.000Z');
+    expect(groupCourtCounts([
+      { status: 'held', startsAt: new Date('2026-10-19T16:00:00.000Z') },
+      { status: 'held', startsAt: new Date('2026-10-26T16:00:00.000Z') },
+      { status: 'held', startsAt: new Date('2026-10-12T16:00:00.000Z') },
+      { status: 'cancelled', startsAt: new Date('2026-10-19T16:00:00.000Z') },
+    ], mondayMorning, 'Europe/Madrid')).toEqual({ weekRemaining: 1, nextWeek: 1, played: 1 });
+    expect(slotsToTry(4, false).every((slot) => slot.offsetMinutes === 0)).toBe(true);
+    expect(slotsToTry(2, true)).toHaveLength(6);
   });
 
   it('counts this week’s future booking without changing the difference', () => {

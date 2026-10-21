@@ -11,6 +11,7 @@ import {
   balanceMinutes,
   buildCourts,
   courtPayer,
+  groupCourtCounts,
   madridDate,
   occurrenceStarts,
   placeMember,
@@ -32,8 +33,11 @@ import {
   gymCredentials,
   invites,
   occurrences,
+  courtChecks,
   playerPreferences,
+  preferredPlayers,
   reservations,
+  schedulerSettings,
   seatRequests,
   seats,
   sessions,
@@ -277,6 +281,10 @@ export class AppDatabase implements SchedulerStore {
     await this.db.delete(availability).where(eq(availability.userId, userId));
     await this.db.delete(seats).where(eq(seats.userId, userId));
     await this.db.delete(playerPreferences).where(eq(playerPreferences.userId, userId));
+    await this.db.delete(preferredPlayers).where(eq(preferredPlayers.userId, userId));
+    await this.db.delete(preferredPlayers).where(eq(preferredPlayers.targetUserId, userId));
+    await this.db.delete(seatRequests).where(eq(seatRequests.userId, userId));
+    await this.db.update(schedulerSettings).set({ availabilityAccountId: null }).where(eq(schedulerSettings.availabilityAccountId, userId));
     await this.db.delete(gymCredentials).where(eq(gymCredentials.userId, userId));
     await this.db.delete(invites).where(and(eq(invites.createdBy, userId), isNull(invites.usedAt)));
     await this.db.update(invites).set({ createdBy: actorId }).where(eq(invites.createdBy, userId));
@@ -410,6 +418,8 @@ export class AppDatabase implements SchedulerStore {
     hasGymCredentials: boolean;
     balance: MinutesBalance;
     preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
+    companions: { id: string; displayName: string }[];
+    preferred: { id: string; userId: string | null; guestName: string | null; displayName: string }[];
     bonsRemaining: number | null;
     bonsCheckedAt: Date | null;
     syncedAt: Date | null;
@@ -443,6 +453,10 @@ export class AppDatabase implements SchedulerStore {
       hasGymCredentials: Boolean(creds[0]),
       balance: balanceMinutes(rows, now, this.config.zone, userId),
       preferences: await this.readPreferences(userId),
+      companions: (await this.db.select({ id: users.id, displayName: users.displayName }).from(users).where(eq(users.active, true)))
+        .filter((person) => person.id !== userId)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      preferred: await this.preferredFor(userId),
       bonsRemaining: creds[0]?.bonsRemaining ?? null,
       bonsCheckedAt: creds[0]?.bonsCheckedAt ?? null,
       syncedAt: creds[0]?.syncedAt ?? null,
@@ -477,12 +491,14 @@ export class AppDatabase implements SchedulerStore {
     const reservationRows = await this.db.select().from(reservations);
     const seatRows = await this.db.select().from(seats);
     const pendingRequests = await this.db.select().from(seatRequests).where(eq(seatRequests.status, 'pending'));
+    const checkRows = await this.db.select().from(courtChecks);
     const preferenceRows = await this.db.select().from(playerPreferences);
     const partySize = new Map(preferenceRows.map((row) => [row.userId, row.partySize === 2 ? 2 as const : 3 as const]));
     const me = people.find((person) => person.id === userId) ?? (await this.requireUser(userId));
     return {
       activeUsers,
       globalBalance: balanceMinutes(rows, now, this.config.zone),
+      group: groupCourtCounts(rows, now, this.config.zone),
       me: {
         id: me.id,
         displayName: me.displayName,
@@ -505,6 +521,9 @@ export class AppDatabase implements SchedulerStore {
           courtsTargeted: occ.courtsTargeted,
           optedIn: opted.map((row) => ({ id: row.userId, displayName: names.get(row.userId) ?? 'Member' })),
           myOptIn: opted.some((row) => row.userId === userId),
+          checks: checkRows
+            .filter((row) => row.occurrenceId === occ.id && !occReservations.some((reservation) => reservation.courtIndex === row.courtIndex && reservation.status !== 'cancelled'))
+            .map((row) => ({ courtIndex: row.courtIndex, free: row.free })),
           courts: assignOptedIn({
             courtsTargeted: occ.courtsTargeted,
             players: opted.map((row) => ({
@@ -611,6 +630,7 @@ export class AppDatabase implements SchedulerStore {
     await this.db.transaction(async (tx) => {
       await this.persistShapes(tx, changed.reservations, now);
     });
+    if (join) await this.prefillPreferred(userId, reservationId, now);
     return null;
   }
 
@@ -887,7 +907,7 @@ export class AppDatabase implements SchedulerStore {
     const rows = occurrenceStarts({
       now,
       zone: this.config.zone,
-      horizonDays: this.config.horizonDays,
+      horizonDays: (await this.schedulerSettings())?.horizonDays ?? this.config.horizonDays,
       historyDays: this.config.historyDays,
       rules: rules.map((rule) => ({
         id: rule.id,
@@ -1146,6 +1166,191 @@ export class AppDatabase implements SchedulerStore {
 
   async markCancelled(id: string, now: Date): Promise<void> {
     await this.db.update(reservations).set({ status: 'cancelled', cancelledAt: now }).where(and(eq(reservations.id, id), ne(reservations.status, 'played')));
+  }
+
+  async schedulerSettings(): Promise<{
+    horizonDays: number;
+    tickSeconds: number;
+    tryOffset: boolean;
+    availabilityEnabled: boolean;
+    availabilityAccountId: string | null;
+    availabilityIntervalHours: number;
+    availabilityCheckedAt: Date | null;
+  } | null> {
+    const rows = await this.db.select().from(schedulerSettings).limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      horizonDays: row.horizonDays,
+      tickSeconds: row.tickSeconds,
+      tryOffset: row.tryOffset,
+      availabilityEnabled: row.availabilityEnabled,
+      availabilityAccountId: row.availabilityAccountId,
+      availabilityIntervalHours: row.availabilityIntervalHours,
+      availabilityCheckedAt: row.availabilityCheckedAt,
+    };
+  }
+
+  async saveSchedulerSettings(input: {
+    horizonDays: number;
+    tickSeconds: number;
+    tryOffset: boolean;
+    availabilityEnabled: boolean;
+    availabilityAccountId: string | null;
+    availabilityIntervalHours: number;
+  }): Promise<void> {
+    await this.db.insert(schedulerSettings).values({
+      id: 'default',
+      ...input,
+      availabilityCheckedAt: null,
+    }).onConflictDoUpdate({
+      target: schedulerSettings.id,
+      set: input,
+    });
+  }
+
+  async saveCourtChecks(rows: { occurrenceId: string; courtIndex: number; free: boolean; checkedAt: Date }[]): Promise<void> {
+    for (const row of rows) {
+      await this.db.insert(courtChecks).values(row).onConflictDoUpdate({
+        target: [courtChecks.occurrenceId, courtChecks.courtIndex],
+        set: { free: row.free, checkedAt: row.checkedAt },
+      });
+    }
+  }
+
+  async markAvailabilityChecked(now: Date): Promise<void> {
+    await this.db.update(schedulerSettings).set({ availabilityCheckedAt: now }).where(eq(schedulerSettings.id, 'default'));
+  }
+
+  async savePreferred(userId: string, players: { userId: string | null; guestName: string | null }[]): Promise<void> {
+    const known = new Set((await this.db.select({ id: users.id }).from(users)).map((person) => person.id));
+    const cleaned: { targetUserId: string | null; guestName: string | null }[] = [];
+    for (const player of players.slice(0, 4)) {
+      const guestName = player.guestName?.trim().slice(0, 40) ?? '';
+      if (player.userId && player.userId !== userId && known.has(player.userId)) {
+        cleaned.push({ targetUserId: player.userId, guestName: null });
+      } else if (!player.userId && guestName) {
+        cleaned.push({ targetUserId: null, guestName });
+      }
+    }
+    await this.db.delete(preferredPlayers).where(eq(preferredPlayers.userId, userId));
+    for (const [position, player] of cleaned.entries()) {
+      await this.db.insert(preferredPlayers).values({
+        id: randomUUID(),
+        userId,
+        targetUserId: player.targetUserId,
+        guestName: player.guestName,
+        position,
+      });
+    }
+  }
+
+  async bookManual(input: {
+    userId: string;
+    courtIndex: number;
+    startsAt: Date;
+    durationMinutes: number;
+    externalRef: string;
+    now: Date;
+  }): Promise<string | null> {
+    const user = await this.requireUser(input.userId);
+    if (!user.active) return 'inactive';
+    if (input.startsAt.getTime() <= input.now.getTime()) return 'started';
+    const occurrenceId = await this.ensureManualOccurrence(input.startsAt, input.durationMinutes, input.now);
+    const clash = await this.db.select().from(reservations).where(and(
+      eq(reservations.occurrenceId, occurrenceId),
+      eq(reservations.courtIndex, input.courtIndex),
+      ne(reservations.status, 'cancelled'),
+    )).limit(1);
+    if (clash.length > 0) return 'taken';
+    const id = randomUUID();
+    await this.db.insert(reservations).values({
+      id,
+      occurrenceId,
+      courtIndex: input.courtIndex,
+      chargedUserId: input.userId,
+      externalRef: input.externalRef,
+      status: 'held',
+      startsAt: input.startsAt,
+      bookedAt: input.now,
+    });
+    return this.setSeat(input.userId, id, true, 'front_left', input.now);
+  }
+
+  private async preferredFor(userId: string): Promise<{ id: string; userId: string | null; guestName: string | null; displayName: string }[]> {
+    const rows = await this.db.select().from(preferredPlayers).where(eq(preferredPlayers.userId, userId));
+    const names = new Map((await this.db.select({ id: users.id, displayName: users.displayName }).from(users)).map((person) => [person.id, person.displayName]));
+    return rows
+      .sort((left, right) => left.position - right.position)
+      .map((row) => ({
+        id: row.id,
+        userId: row.targetUserId,
+        guestName: row.guestName,
+        displayName: row.targetUserId ? (names.get(row.targetUserId) ?? '') : (row.guestName ?? ''),
+      }));
+  }
+
+  private async ensureManualOccurrence(startsAt: Date, durationMinutes: number, now: Date): Promise<string> {
+    const existing = await this.db.select().from(occurrences);
+    const match = existing.find((item) => item.startsAt.getTime() === startsAt.getTime() && item.durationMinutes === durationMinutes && item.clubCode === 'ROC');
+    if (match) return match.id;
+    const id = randomUUID();
+    await this.db.insert(occurrences).values({
+      id,
+      slotRuleId: null,
+      startsAt,
+      durationMinutes,
+      clubCode: 'ROC',
+      courtsTargeted: 1,
+      grabbedAt: now,
+    });
+    return id;
+  }
+
+  private async prefillPreferred(actorId: string, reservationId: string, now: Date): Promise<void> {
+    const list = (await this.db.select().from(preferredPlayers).where(eq(preferredPlayers.userId, actorId)))
+      .sort((left, right) => left.position - right.position);
+    const reservationRows = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+    const reservation = reservationRows[0];
+    if (!reservation || reservation.status !== 'held') return;
+    const occ = await this.occurrence(reservation.occurrenceId);
+    if (!occ || now.getTime() >= occ.startsAt.getTime()) return;
+    const actorIsOwner = reservation.chargedUserId === actorId;
+    const spots: Spot[] = ['front_left', 'front_right', 'back'];
+    for (const player of list) {
+      const seatRows = await this.db.select().from(seats).where(eq(seats.reservationId, reservationId));
+      const spot = spots.find((position) => !seatRows.some((seat) => seat.position === position));
+      if (!spot) return;
+      if (player.targetUserId) {
+        if (seatRows.some((seat) => seat.userId === player.targetUserId)) continue;
+        const people = await this.db.select().from(users).where(eq(users.id, player.targetUserId)).limit(1);
+        const member = people[0];
+        if (!member?.active) continue;
+        if (actorIsOwner) {
+          const group = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, occ.id));
+          const allSeats = await this.db.select().from(seats);
+          const changed = placeMember({
+            reservations: group.map((row) => this.shapeReservation(row, allSeats)),
+            actorId: member.id,
+            actorActive: member.active,
+            targetId: reservationId,
+            position: spot,
+            join: true,
+            now,
+            startsAt: occ.startsAt,
+            seatId: randomUUID(),
+          });
+          if (!changed.ok) continue;
+          await this.db.transaction(async (tx) => {
+            await this.persistShapes(tx, changed.reservations, now);
+          });
+        } else {
+          await this.createSeatRequest(member, reservation, spot, occ.startsAt, now);
+        }
+        continue;
+      }
+      if (player.guestName) await this.addCourtGuest(actorId, reservationId, player.guestName, spot, now);
+    }
   }
 
   private async occurrence(id: string) {

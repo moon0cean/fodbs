@@ -70,15 +70,15 @@ export function AdminScreen({ me }: { me: SessionUser }) {
   return (
     <main className="panel">
       {error && <p className="banner">{error}</p>}
-      <div className="admin-shell">
-        <nav className="admin-nav" aria-label={t('admin')}>
+      <div className="section-shell">
+        <nav className="section-nav" aria-label={t('admin')}>
           {sections.map((item) => (
             <button key={item.id} type="button" className={section === item.id ? 'on' : ''} onClick={() => setSection(item.id)}>
               {item.label}
             </button>
           ))}
         </nav>
-        <div className="admin-main">
+        <div className="section-main">
           {section === 'members' && (
             <section>
               <h2>{t('members')}</h2>
@@ -381,7 +381,77 @@ function SlotSection({
           ))}
         </tbody>
       </table>
+      <SchedulerForm onError={onError} />
     </section>
+  );
+}
+
+function SchedulerForm({ onError }: { onError: (value: string) => void }) {
+  const { t, explain } = useI18n();
+  const [horizonDays, setHorizonDays] = useState(7);
+  const [tickSeconds, setTickSeconds] = useState(15);
+  const [tryOffset, setTryOffset] = useState(true);
+  const [availabilityEnabled, setAvailabilityEnabled] = useState(false);
+  const [availabilityAccountId, setAvailabilityAccountId] = useState('');
+  const [availabilityIntervalHours, setAvailabilityIntervalHours] = useState(6);
+  const [accounts, setAccounts] = useState<{ id: string; displayName: string }[]>([]);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api<{
+      settings: {
+        horizonDays: number;
+        tickSeconds: number;
+        tryOffset: boolean;
+        availabilityEnabled: boolean;
+        availabilityAccountId: string | null;
+        availabilityIntervalHours: number;
+      };
+      accounts: { id: string; displayName: string }[];
+    }>('/api/admin/scheduler').then((body) => {
+      setHorizonDays(body.settings.horizonDays);
+      setTickSeconds(body.settings.tickSeconds);
+      setTryOffset(body.settings.tryOffset);
+      setAvailabilityEnabled(body.settings.availabilityEnabled);
+      setAvailabilityAccountId(body.settings.availabilityAccountId ?? '');
+      setAvailabilityIntervalHours(body.settings.availabilityIntervalHours);
+      setAccounts(body.accounts);
+    }).catch((reason: unknown) => onError(text(reason, explain)));
+  }, []);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        setSaved(false);
+        api('/api/admin/scheduler', {
+          method: 'PUT',
+          body: JSON.stringify({
+            horizonDays,
+            tickSeconds,
+            tryOffset,
+            availabilityEnabled,
+            availabilityAccountId: availabilityAccountId || null,
+            availabilityIntervalHours,
+          }),
+        }).then(() => setSaved(true)).catch((reason: unknown) => onError(text(reason, explain)));
+      }}
+    >
+      <h2>{t('schedulerSettings')}</h2>
+      <label>{t('horizonDays')}<input type="number" min={1} max={14} value={horizonDays} onChange={(event) => setHorizonDays(Number(event.target.value))} /></label>
+      <label>{t('tickSeconds')}<input type="number" min={5} max={3600} value={tickSeconds} onChange={(event) => setTickSeconds(Number(event.target.value))} /> {t('seconds')}</label>
+      <label className="check"><input type="checkbox" checked={tryOffset} onChange={(event) => setTryOffset(event.target.checked)} /> {t('tryOffset')}</label>
+      <label className="check"><input type="checkbox" checked={availabilityEnabled} onChange={(event) => setAvailabilityEnabled(event.target.checked)} /> {t('availabilityCheck')}</label>
+      <label>{t('checkAccount')}
+        <select value={availabilityAccountId} onChange={(event) => setAvailabilityAccountId(event.target.value)}>
+          <option value="" />
+          {accounts.map((account) => <option key={account.id} value={account.id}>{account.displayName}</option>)}
+        </select>
+      </label>
+      <label>{t('everyHours')}<input type="number" min={1} max={48} value={availabilityIntervalHours} onChange={(event) => setAvailabilityIntervalHours(Number(event.target.value))} /> {t('hoursLabel')}</label>
+      <button className="solid" type="submit">{t('savePlay')}</button>
+      {saved && <p className="notice" role="status">{t('saved')}</p>}
+    </form>
   );
 }
 
