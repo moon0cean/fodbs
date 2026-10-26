@@ -73,7 +73,7 @@ export function AdminScreen({ me }: { me: SessionUser }) {
       <div className="section-shell">
         <nav className="section-nav" aria-label={t('admin')}>
           {sections.map((item) => (
-            <button key={item.id} type="button" className={section === item.id ? 'on' : ''} onClick={() => setSection(item.id)}>
+            <button key={item.id} type="button" className={section === item.id ? 'on' : 'ghost'} onClick={() => setSection(item.id)}>
               {item.label}
             </button>
           ))}
@@ -152,6 +152,7 @@ export function AdminScreen({ me }: { me: SessionUser }) {
                   }).then(remember).catch((reason: unknown) => setError(text(reason, explain)));
                 }}
               >
+                <div className="field-grid">
                 <label>{t('role')}
                   <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'member' | 'admin')}>
                     <option value="member">{t('member')}</option>
@@ -160,12 +161,13 @@ export function AdminScreen({ me }: { me: SessionUser }) {
                 </label>
                 <label>{t('email')}<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} required /></label>
                 <button className="solid" type="submit">{t('sendInvite')}</button>
+                </div>
               </form>
               {link && <p className="notice" role="status">{mailed ? t('mailed') : t('mailMissing')}</p>}
               {link && (
                 <p className="link-row">
                   <code>{link}</code>
-                  <button type="button" onClick={() => void navigator.clipboard.writeText(link)}>{t('copy')}</button>
+                  <button className="ghost" type="button" onClick={() => void navigator.clipboard.writeText(link)}>{t('copy')}</button>
                 </p>
               )}
               <table className="data">
@@ -341,6 +343,7 @@ function SlotSection({
           }).then(onSaved).catch((reason: unknown) => onError(text(reason, explain)));
         }}
       >
+        <div className="field-grid">
         <label>{t('weekday')}
           <select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => <option key={day} value={day}>{weekdayName(day, lang)} ({weekdayShort(day - 1)})</option>)}
@@ -349,6 +352,7 @@ function SlotSection({
         <label>{t('start')}<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></label>
         <label>{t('minutes')}<input type="number" min={30} max={180} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} /></label>
         <button className="solid" type="submit">{t('addSlot')}</button>
+        </div>
       </form>
       <table className="data">
         <thead>
@@ -367,6 +371,7 @@ function SlotSection({
               <td>{rule.durationMinutes}</td>
               <td>
                 <button
+                  className="ghost"
                   type="button"
                   onClick={() => {
                     api(`/api/admin/slot-rules/${rule.id}`, { method: 'PATCH', body: JSON.stringify({ active: !rule.active }) })
@@ -438,6 +443,7 @@ function SchedulerForm({ onError }: { onError: (value: string) => void }) {
       }}
     >
       <h2>{t('schedulerSettings')}</h2>
+      <div className="field-grid">
       <label>{t('horizonDays')}<input type="number" min={1} max={14} value={horizonDays} onChange={(event) => setHorizonDays(Number(event.target.value))} /></label>
       <label>{t('tickSeconds')}<input type="number" min={5} max={3600} value={tickSeconds} onChange={(event) => setTickSeconds(Number(event.target.value))} /> {t('seconds')}</label>
       <label className="check"><input type="checkbox" checked={tryOffset} onChange={(event) => setTryOffset(event.target.checked)} /> {t('tryOffset')}</label>
@@ -450,6 +456,7 @@ function SchedulerForm({ onError }: { onError: (value: string) => void }) {
       </label>
       <label>{t('everyHours')}<input type="number" min={1} max={48} value={availabilityIntervalHours} onChange={(event) => setAvailabilityIntervalHours(Number(event.target.value))} /> {t('hoursLabel')}</label>
       <button className="solid" type="submit">{t('savePlay')}</button>
+      </div>
       {saved && <p className="notice" role="status">{t('saved')}</p>}
     </form>
   );

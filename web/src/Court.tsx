@@ -41,7 +41,7 @@ export function CourtCard({
               <button
                 key={time.occurrenceId}
                 type="button"
-                className={current && time.occurrenceId === current.occurrenceId ? 'on' : ''}
+                className={current && time.occurrenceId === current.occurrenceId ? 'on' : 'ghost'}
                 onClick={() => setSelectedId(time.occurrenceId)}
               >
                 {time.label}
@@ -159,7 +159,7 @@ function SquashCourt({
           {court.ownerId === meId && (
             <div className="request-actions">
               <button className="solid" type="button" onClick={() => decide(request.id, 'approve')}>{t('approve')}</button>
-              <button type="button" onClick={() => decide(request.id, 'reject')}>{t('reject')}</button>
+              <button className="ghost" type="button" onClick={() => decide(request.id, 'reject')}>{t('reject')}</button>
             </div>
           )}
         </div>
@@ -182,7 +182,7 @@ function SquashCourt({
           <label>{t('guest')}
             <input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={40} placeholder={t('guestName')} />
           </label>
-          <button className="solid" type="submit">{t('addGuest')}</button>
+          <button className="ghost" type="submit">{t('addGuest')}</button>
         </form>
       )}
     </div>
