@@ -35,16 +35,17 @@ export function App() {
           <p className="sub">{t('tagline')}</p>
         </div>
         <nav>
-          <button className={tab === 'dashboard' ? 'on' : ''} onClick={() => setTab('dashboard')}>{t('board')}</button>
-          <button className={tab === 'account' ? 'on' : ''} onClick={() => setTab('account')}>{t('account')}</button>
+          <button className={tab === 'dashboard' ? 'on' : 'ghost'} onClick={() => setTab('dashboard')}>{t('board')}</button>
+          <button className={tab === 'account' ? 'on' : 'ghost'} onClick={() => setTab('account')}>{t('account')}</button>
           {me.role === 'admin' && (
-            <button className={tab === 'admin' ? 'on' : ''} onClick={() => setTab('admin')}>{t('admin')}</button>
+            <button className={tab === 'admin' ? 'on' : 'ghost'} onClick={() => setTab('admin')}>{t('admin')}</button>
           )}
           <span className="langs">
             <button type="button" className={lang === 'es' ? 'on' : ''} onClick={() => setLang('es')}>ES</button>
             <button type="button" className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
           </span>
           <button
+            className="ghost"
             onClick={() => {
               void api('/api/auth/logout', { method: 'POST' }).then(() => setMe(null));
             }}
@@ -90,7 +91,7 @@ function LoginScreen({ onDone }: { onDone: (user: SessionUser) => void }) {
         {error && <p className="banner">{error}</p>}
         <button className="solid" type="submit">{t('enter')}</button>
       </form>
-      <button type="button" onClick={() => setAsking((value) => !value)}>{t('requestAccess')}</button>
+      <button className="ghost" type="button" onClick={() => setAsking((value) => !value)}>{t('requestAccess')}</button>
       {asking && (
         <form
           onSubmit={(event) => {
@@ -209,56 +210,68 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       </div>
       {!me.active && <p className="banner">{t('pausedHint')}</p>}
       {me.active && !data.me.hasGymCredentials && <p className="notice">{t('seatRequestHint')}</p>}
-      {data.me.hasGymCredentials && (
-        <BookWizard
-          date={data.date}
-          dates={data.dates}
-          onDate={(next) => {
-            setDate(next);
-            load(next);
-          }}
-          onBooked={(booked) => {
-            setDate(booked);
-            load(booked);
-          }}
-          onError={onError}
-        />
-      )}
+      {data.me.hasGymCredentials && <BookWizard date={data.date} onBooked={() => load(data.date)} onError={onError} />}
       {data.occurrences.some((occurrence) => occurrence.checks.length > 0) && (
-        <div className="checks">
-          {data.occurrences.filter((occurrence) => occurrence.checks.length > 0).map((occurrence) => (
-            <p key={occurrence.id}>
-              <strong>{timeOnly(occurrence.startsAt, lang)}</strong>
-              {occurrence.checks.map((check) => (
-                <span key={check.courtIndex}>{t('court')} {courtNumber(check.courtIndex)} {check.free ? t('freeCourt') : t('busyCourt')}</span>
-              ))}
-            </p>
-          ))}
-        </div>
+        <section className="panel-block">
+          <h2>{t('availability')}</h2>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>{t('preferredTime')}</th>
+                <th>{t('court')}</th>
+                <th>{t('status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.occurrences.flatMap((occurrence) => occurrence.checks.map((check) => (
+                <tr key={`${occurrence.id}-${check.courtIndex}`}>
+                  <td>{timeOnly(occurrence.startsAt, lang)}</td>
+                  <td>{courtNumber(check.courtIndex)}</td>
+                  <td>{check.free ? t('freeCourt') : t('busyCourt')}</td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </section>
       )}
-      {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
-      <div className="joins">
-        {data.occurrences.filter((occurrence) => !occurrence.courts.some((court) => court.reservationId)).map((occurrence) => (
-          <div key={occurrence.id} className="join">
-            <strong>{timeOnly(occurrence.startsAt, lang)}</strong>
-            <button
-              className={occurrence.myOptIn ? 'solid' : ''}
-              type="button"
-              disabled={!me.active || !data.me.hasGymCredentials}
-              onClick={() => {
-                if (!me.active) return;
-                void api(`/api/occurrences/${occurrence.id}/availability`, {
-                  method: 'POST',
-                  body: JSON.stringify({ in: !occurrence.myOptIn }),
-                }).then(() => load(data.date)).catch((reason: unknown) => onError(message(reason, explain)));
-              }}
-            >
-              {occurrence.myOptIn ? t('imIn') : t('countMe')}
-            </button>
-          </div>
-        ))}
-      </div>
+      {data.occurrences.some((occurrence) => !occurrence.courts.some((court) => court.reservationId)) && (
+        <section className="panel-block">
+          <h2>{t('countMe')}</h2>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>{t('preferredTime')}</th>
+                <th className="actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {data.occurrences.filter((occurrence) => !occurrence.courts.some((court) => court.reservationId)).map((occurrence) => (
+                <tr key={occurrence.id}>
+                  <td>{timeOnly(occurrence.startsAt, lang)}</td>
+                  <td className="actions">
+                    <button
+                      className={occurrence.myOptIn ? 'solid' : 'ghost'}
+                      type="button"
+                      disabled={!me.active || !data.me.hasGymCredentials}
+                      onClick={() => {
+                        if (!me.active) return;
+                        void api(`/api/occurrences/${occurrence.id}/availability`, {
+                          method: 'POST',
+                          body: JSON.stringify({ in: !occurrence.myOptIn }),
+                        }).then(() => load(data.date)).catch((reason: unknown) => onError(message(reason, explain)));
+                      }}
+                    >
+                      {occurrence.myOptIn ? t('imIn') : t('countMe')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
       <section className="slot">
+        {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
         <div className="slot-layout">
           <div className="courts">
             {[1, 0, 3, 2].map((courtIndex) => (
@@ -335,7 +348,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       <div className="section-shell">
         <nav className="section-nav" aria-label={t('account')}>
           {sections.map((item) => (
-            <button key={item.id} type="button" className={section === item.id ? 'on' : ''} onClick={() => setSection(item.id)}>
+            <button key={item.id} type="button" className={section === item.id ? 'on' : 'ghost'} onClick={() => setSection(item.id)}>
               {item.label}
             </button>
           ))}
@@ -347,15 +360,28 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       <section>
       <h2>{t('bookedOnYou')}</h2>
       {account.reservations.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
-      <ul className="ledger">
-        {account.reservations.map((reservation) => (
-          <li key={reservation.id}>
-            <span>{clock(reservation.startsAt, lang)} · {t('court')} {courtNumber(reservation.courtIndex)}</span>
-            <em>{status(reservation.status)}</em>
-            <strong>{hours(reservation.durationMinutes)}</strong>
-          </li>
-        ))}
-      </ul>
+      {account.reservations.length > 0 && (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('when')}</th>
+              <th>{t('court')}</th>
+              <th>{t('status')}</th>
+              <th>{t('duration')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {account.reservations.map((reservation) => (
+              <tr key={reservation.id}>
+                <td>{clock(reservation.startsAt, lang)}</td>
+                <td>{courtNumber(reservation.courtIndex)}</td>
+                <td>{status(reservation.status)}</td>
+                <td>{hours(reservation.durationMinutes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       </section>
       </>
       )}
@@ -394,8 +420,8 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         </button>
         {syncedNote && <p className="notice" role="status">{t('synced')}</p>}
         <h2>{t('credentials')}</h2>
-        <p>{t('sealed')}</p>
-        <p>{t('syncHint')}</p>
+        <p className="hint">{t('sealed')}</p>
+        <p className="hint">{t('syncHint')}</p>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -410,9 +436,11 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
               .catch((reason: unknown) => setError(message(reason, explain)));
           }}
         >
+          <div className="field-grid">
           <label>{t('identifier')}<input value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
           <label>{t('password')}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
           <button className="solid" type="submit">{t('replaceCredentials')}</button>
+          </div>
           {credsSaved && <p className="notice" role="status">{t('saved')}</p>}
         </form>
       </section>
@@ -420,9 +448,9 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       {section === 'status' && (
       <section>
         <h2>{t('status')}</h2>
-        <p>{active ? t('activeHint') : t('pausedHint')}</p>
+        <p className="hint">{active ? t('activeHint') : t('pausedHint')}</p>
         <button
-          className="solid"
+          className={active ? 'ghost' : 'solid'}
           type="button"
           onClick={() => {
             setError('');
@@ -455,7 +483,8 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         }}
       >
         <h2>{t('playShape')}</h2>
-        <p>{t('playShapeHint')}</p>
+        <p className="hint">{t('playShapeHint')}</p>
+        <div className="field-grid">
         <fieldset className="days">
           <legend>{t('weekdays')}</legend>
           {[1, 2, 3, 4, 5, 6, 7].map((day) => {
@@ -464,7 +493,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
               <button
                 key={day}
                 type="button"
-                className={selected ? 'on' : ''}
+                className={selected ? 'on' : 'ghost'}
                 aria-pressed={selected}
                 onClick={() => {
                   setWeekdays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day]);
@@ -479,10 +508,11 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         <label>{t('preferredTime')}<input type="time" value={preferredTime} onChange={(event) => { setPreferredTime(event.target.value); setPlaySaved(false); }} required /></label>
         <fieldset className="days">
           <legend>{t('party')}</legend>
-          <button type="button" className={partySize === 2 ? 'on' : ''} aria-pressed={partySize === 2} onClick={() => { setPartySize(2); setPlaySaved(false); }}>{t('pair')}</button>
-          <button type="button" className={partySize === 3 ? 'on' : ''} aria-pressed={partySize === 3} onClick={() => { setPartySize(3); setPlaySaved(false); }}>{t('trio')}</button>
+          <button type="button" className={partySize === 2 ? 'on' : 'ghost'} aria-pressed={partySize === 2} onClick={() => { setPartySize(2); setPlaySaved(false); }}>{t('pair')}</button>
+          <button type="button" className={partySize === 3 ? 'on' : 'ghost'} aria-pressed={partySize === 3} onClick={() => { setPartySize(3); setPlaySaved(false); }}>{t('trio')}</button>
         </fieldset>
         <button className="solid" type="submit">{t('savePlay')}</button>
+        </div>
         {playSaved && <p className="notice" role="status">{t('saved')}</p>}
       </form>
       <PreferredForm account={account} onSaved={load} onError={setError} />
@@ -495,15 +525,12 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
 }
 
 
-function BookWizard({ date, dates, onDate, onBooked, onError }: {
+function BookWizard({ date, onBooked, onError }: {
   date: string;
-  dates: string[];
-  onDate: (value: string) => void;
-  onBooked: (value: string) => void;
+  onBooked: () => void;
   onError: (value: string) => void;
 }) {
   const { t, lang, explain } = useI18n();
-  const [day, setDay] = useState(date);
   const [time, setTime] = useState('18:00');
   const [duration, setDuration] = useState<30 | 60 | 90 | 120>(60);
   const [exact, setExact] = useState<Opening[]>([]);
@@ -524,63 +551,52 @@ function BookWizard({ date, dates, onDate, onBooked, onError }: {
       setExact([]);
       setAlternatives([]);
       setSearched(false);
-      onBooked(day);
+      onBooked();
     }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
   }
 
   useEffect(() => {
-    setDay(date);
+    setExact([]);
+    setAlternatives([]);
+    setSearched(false);
+    setSaved(false);
   }, [date]);
 
   return (
-    <form
-      className="wizard"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setBusy(true);
-        setSaved(false);
-        onError('');
-        void api<{ exact: Opening[]; alternatives: Opening[] }>('/api/bookings/search', {
-          method: 'POST',
-          body: JSON.stringify({ date: day, time, durationMinutes: duration }),
-        }).then((result) => {
-          setExact(result.exact);
-          setAlternatives(result.alternatives);
-          setSearched(true);
-        }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
-      }}
-    >
+    <section className="panel-block">
       <h2>{t('bookCourt')}</h2>
-      <p>{t('bookAnyDay')}</p>
-      <label>{t('day')}
-        <input
-          type="date"
-          value={day}
-          min={dates[0]}
-          max={dates[dates.length - 1]}
-          onChange={(event) => {
-            const next = event.target.value;
-            setDay(next);
-            setExact([]);
-            setAlternatives([]);
-            setSearched(false);
-            if (dates.includes(next)) onDate(next);
-          }}
-          required
-        />
-      </label>
-      <label>{t('preferredTime')}<input type="time" step={1800} value={time} onChange={(event) => setTime(event.target.value.slice(0, 5))} required /></label>
-      <label>{t('duration')}
-        <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 30 | 60 | 90 | 120)}>
-          {[30, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes}</option>)}
-        </select>
-      </label>
-      <button className="solid" type="submit" disabled={busy || !day}>{busy ? t('setting') : t('searchCourts')}</button>
-      {saved && <p className="notice" role="status">{t('bookingSaved')}</p>}
-      {searched && exact.length === 0 && alternatives.length === 0 && <p className="empty">{t('noneFree')}</p>}
-      <OpeningList title={t('exactSlots')} openings={exact} lang={lang} disabled={busy} onPick={confirm} />
-      <OpeningList title={t('otherSlots')} openings={alternatives} lang={lang} disabled={busy} onPick={confirm} />
-    </form>
+      <p className="hint">{t('bookAnyDay')}</p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setBusy(true);
+          setSaved(false);
+          onError('');
+          void api<{ exact: Opening[]; alternatives: Opening[] }>('/api/bookings/search', {
+            method: 'POST',
+            body: JSON.stringify({ date, time, durationMinutes: duration }),
+          }).then((result) => {
+            setExact(result.exact);
+            setAlternatives(result.alternatives);
+            setSearched(true);
+          }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
+        }}
+      >
+        <div className="inline-fields">
+          <label>{t('preferredTime')}<input type="time" step={1800} value={time} onChange={(event) => setTime(event.target.value.slice(0, 5))} required /></label>
+          <label>{t('duration')}
+            <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 30 | 60 | 90 | 120)}>
+              {[30, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes}</option>)}
+            </select>
+          </label>
+          <button className="solid" type="submit" disabled={busy || !date}>{busy ? t('setting') : t('searchCourts')}</button>
+        </div>
+        {saved && <p className="notice" role="status">{t('bookingSaved')}</p>}
+        {searched && exact.length === 0 && alternatives.length === 0 && <p className="empty">{t('noneFree')}</p>}
+        <OpeningList title={t('exactSlots')} openings={exact} lang={lang} disabled={busy} onPick={confirm} />
+        <OpeningList title={t('otherSlots')} openings={alternatives} lang={lang} disabled={busy} onPick={confirm} />
+      </form>
+    </section>
   );
 }
 
@@ -594,14 +610,27 @@ function OpeningList({ title, openings, lang, disabled, onPick }: {
   const { t } = useI18n();
   if (openings.length === 0) return null;
   return (
-    <div className="openings">
-      <h3>{title}</h3>
-      {openings.map((opening) => (
-        <button key={`${opening.courtIndex}-${opening.startsAt}`} type="button" disabled={disabled} onClick={() => onPick(opening)}>
-          {t('court')} {courtNumber(opening.courtIndex)} · {timeOnly(opening.startsAt, lang)}
-        </button>
-      ))}
-    </div>
+    <table className="data">
+      <caption>{title}</caption>
+      <thead>
+        <tr>
+          <th>{t('court')}</th>
+          <th>{t('preferredTime')}</th>
+          <th className="actions" />
+        </tr>
+      </thead>
+      <tbody>
+        {openings.map((opening) => (
+          <tr key={`${opening.courtIndex}-${opening.startsAt}`}>
+            <td>{courtNumber(opening.courtIndex)}</td>
+            <td>{timeOnly(opening.startsAt, lang)}</td>
+            <td className="actions">
+              <button className="ghost" type="button" disabled={disabled} onClick={() => onPick(opening)}>{t('bookCourt')}</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -632,15 +661,28 @@ function PreferredForm({ account, onSaved, onError }: { account: Account; onSave
       }}
     >
       <h2>{t('preferredPlayers')}</h2>
-      <p>{t('preferredHint')}</p>
-      <ul className="ledger">
-        {players.map((player, index) => (
-          <li key={`${player.userId ?? player.guestName}-${index}`}>
-            <span>{player.displayName}</span>
-            <button type="button" onClick={() => setPlayers((current) => current.filter((_, item) => item !== index))}>{t('remove')}</button>
-          </li>
-        ))}
-      </ul>
+      <p className="hint">{t('preferredHint')}</p>
+      {players.length > 0 && (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('name')}</th>
+              <th className="actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((player, index) => (
+              <tr key={`${player.userId ?? player.guestName}-${index}`}>
+                <td>{player.displayName}</td>
+                <td className="actions">
+                  <button className="ghost" type="button" onClick={() => setPlayers((current) => current.filter((_, item) => item !== index))}>{t('remove')}</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="field-grid">
       <label>{t('memberPick')}
         <select value={memberId} onChange={(event) => setMemberId(event.target.value)}>
           <option value="" />
@@ -650,6 +692,7 @@ function PreferredForm({ account, onSaved, onError }: { account: Account; onSave
         </select>
       </label>
       <button
+        className="ghost"
         type="button"
         disabled={!memberId || players.length >= 4}
         onClick={() => {
@@ -666,6 +709,7 @@ function PreferredForm({ account, onSaved, onError }: { account: Account; onSave
         <input value={guestName} maxLength={40} onChange={(event) => setGuestName(event.target.value)} />
       </label>
       <button
+        className="ghost"
         type="button"
         disabled={!guestName.trim() || players.length >= 4}
         onClick={() => {
@@ -677,6 +721,7 @@ function PreferredForm({ account, onSaved, onError }: { account: Account; onSave
         {t('addGuest')}
       </button>
       <button className="solid" type="submit">{t('savePlay')}</button>
+      </div>
       {saved && <p className="notice" role="status">{t('saved')}</p>}
     </form>
   );

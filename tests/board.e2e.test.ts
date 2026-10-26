@@ -63,8 +63,9 @@ test('opting in keeps the court pair centered', async () => {
 
   const iso = target.toISODate() ?? '';
   await page.locator(`[data-date="${iso}"]`).click();
-  await page.getByRole('button', { name: 'Me apunto', exact: true }).first().waitFor();
-  expect(await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(2);
+  const optIn = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Me apunto', exact: true }) });
+  await optIn.getByRole('button', { name: 'Me apunto', exact: true }).first().waitFor();
+  expect(await optIn.getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(2);
   expect(await page.locator('.squash').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(0);
   expect(await page.locator('.court-label span').allTextContents()).toEqual(['Pista 05', 'Pista 04', 'Pista 11', 'Pista 10']);
   const bubble = await page.locator('.bubble').first().boundingBox();
@@ -83,8 +84,8 @@ test('opting in keeps the court pair centered', async () => {
     return { x: box.x, height: box.height };
   }));
 
-  await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).first().click();
-  await page.locator('.joins').getByRole('button', { name: 'Apuntado', exact: true }).waitFor();
+  await optIn.getByRole('button', { name: 'Me apunto', exact: true }).first().click();
+  await optIn.getByRole('button', { name: 'Apuntado', exact: true }).waitFor();
 
   const after = await centered(panel, layout);
   expect(after.gap).toBeLessThan(8);
@@ -99,8 +100,8 @@ test('opting in keeps the court pair centered', async () => {
   });
   expect(afterBoxes.filter((box) => box.playing).length).toBe(0);
   expect(await page.locator('.bubble.filled').count()).toBe(0);
-  expect(await page.locator('.joins').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(1);
-  expect(await page.locator('.joins').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(1);
+  expect(await optIn.getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(1);
+  expect(await optIn.getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(1);
   expect(await page.locator('.squash').getByRole('button', { name: 'Apuntado', exact: true }).count()).toBe(0);
   expect(await page.locator('.squash').getByRole('button', { name: 'Me apunto', exact: true }).count()).toBe(0);
   expect(await page.locator('.guest-remove').count()).toBe(0);

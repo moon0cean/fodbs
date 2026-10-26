@@ -26,6 +26,9 @@ button { cursor: pointer; }
 .sub { margin: 6px 0 0; color: var(--muted); }
 nav { display: flex; gap: 8px; flex-wrap: wrap; }
 button, .solid { border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 10px 14px; min-height: 44px; }
+button.ghost { border-color: #6d6458; background: transparent; color: var(--paper); }
+button.ghost:hover { border-color: var(--paper); }
+button:disabled { opacity: 0.45; cursor: default; }
 .langs { display: inline-flex; gap: 4px; }
 button.on, button.solid { background: var(--ball); color: var(--ink); }
 .banner { background: var(--danger); color: white; padding: 10px 14px; border-radius: 12px; }
@@ -34,7 +37,12 @@ button.on, button.solid { background: var(--ball); color: var(--ink); }
 .gate { padding: 10vh 0 48px; }
 .gate h1, .lede { max-width: 16ch; }
 .lede { color: var(--muted); }
-form { display: grid; gap: 12px; max-width: 420px; }
+form { display: grid; gap: 12px; }
+.gate form, .field-grid { display: grid; gap: 12px; max-width: 420px; }
+.inline-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.inline-fields label { flex: 1 1 10rem; min-width: 0; }
+.inline-fields button { flex: 0 0 auto; }
+.hint { margin: 0; color: var(--muted); }
 label { display: grid; gap: 6px; color: var(--muted); }
 label.check { display: flex; align-items: center; gap: 8px; }
 label.check input { width: auto; min-height: 0; }
@@ -53,15 +61,15 @@ fieldset.days button.on { border-color: var(--ball); }
   font-weight: 650;
 }
 
-.panel { padding-bottom: 40px; }
-.summary { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin: 12px 0; }
-.balance, .roster, .slot, .section-main section {
+.panel { display: grid; gap: 12px; padding-bottom: 40px; align-content: start; }
+.summary { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin: 0; }
+.balance, .roster, .slot, .panel-block, .section-main section {
   background: rgba(255, 248, 236, 0.04);
   border: 1px solid rgba(243, 234, 215, 0.12);
   border-radius: 16px;
   padding: 12px 14px;
 }
-.section-main h2, .balance h2, .roster h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.section-main h2, .balance h2, .roster h2, .panel-block h2, .slot h2 { margin: 0 0 8px; font-size: 1.35rem; }
 .figures { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .figures p { margin: 0; min-width: 7.5rem; }
 .figures span, .court-label em, .ledger em { display: block; color: var(--muted); font-style: normal; font-size: 13px; }
@@ -75,7 +83,7 @@ fieldset.days button.on { border-color: var(--ball); }
 .roster li, .ledger li { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--court); color: var(--line); font-size: 12px; }
 
-.slider { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 0 18px; max-width: 100%; }
+.slider { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0; max-width: 100%; }
 .time-slider { display: flex; gap: 6px; overflow-x: auto; max-width: 58%; }
 .time-slider button { flex: 0 0 auto; min-width: 0; min-height: 32px; padding: 4px 8px; scroll-snap-align: start; }
 .joins { display: grid; gap: 8px; margin-bottom: 12px; }
@@ -88,7 +96,7 @@ fieldset.days button.on { border-color: var(--ball); }
 .date.on span { color: #6d6458; }
 
 .slot-layout { width: 100%; }
-.venue { margin: 8px 0 0; color: var(--muted); }
+.venue { margin: 0; color: var(--muted); }
 .slot header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .slot header h2 { margin: 0; }
 .slot header p { color: var(--muted); margin: 4px 0 0; }
@@ -207,8 +215,9 @@ fieldset.days button.on { border-color: var(--ball); }
   font-size: 14px;
   line-height: 18px;
 }
-.checks p, .openings { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.wizard { margin: 8px 0 12px; }
+.data caption { caption-side: top; text-align: left; font-family: Fraunces, Georgia, serif; font-size: 1.05rem; color: var(--paper); padding: 4px 8px 8px; }
+.data td.actions, .data th.actions { text-align: right; width: 1%; white-space: nowrap; }
+.data td .ghost, .data td .solid { min-height: 36px; padding: 6px 12px; }
 .guest-row { display: grid; gap: 8px; }
 .request-actions { display: flex; gap: 8px; }
 .guest-row p, .guest-remove { color: var(--muted); font-size: 13px; }
