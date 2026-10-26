@@ -39,7 +39,7 @@ A member keeps an ordered list of other members and guest names. The list fills 
 
 - **FR-201**: The board MUST show group court counts for this Madrid week still to play, next week, and already started. Each non-cancelled reservation counts once. The roster MUST NOT show a personal hour difference.
 - **FR-202**: Cuenta MUST keep the personal booked, this week, next week, played, and difference figures.
-- **FR-203**: A member with DiR credentials MUST be able to search a day, time, and duration. The search reads the club form and MUST NOT confirm a payment or a booking. Exact free courts come first, then free courts 30 minutes earlier or later on the same Madrid day when that offset is enabled.
+- **FR-203**: A member with DiR credentials MUST be able to search a day, time, and duration, including a day or time that is not a weekly turn. The search reads the club form and MUST NOT confirm a payment or a booking. Exact free courts come first, then free courts 30 minutes earlier or later on the same Madrid day when that offset is enabled.
 - **FR-204**: Confirming a search result MUST book that court on the member's DiR account, store the reservation, and seat them, unless the daily or simultaneous cap says no.
 - **FR-205**: An admin MUST be able to set days ahead (default 7), how often the worker checks (default 15 seconds), and whether it may try ±30 minutes (default on). The worker uses those values, and the environment values when no row exists.
 - **FR-206**: An admin MUST be able to enable an availability check on one DiR account, every N hours (default 6). The check uses the same read-only look as the wizard. Results appear on the board for courts that have no reservation.
