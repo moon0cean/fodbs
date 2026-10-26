@@ -209,7 +209,21 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       </div>
       {!me.active && <p className="banner">{t('pausedHint')}</p>}
       {me.active && !data.me.hasGymCredentials && <p className="notice">{t('seatRequestHint')}</p>}
-      {data.me.hasGymCredentials && <BookWizard date={data.date} onBooked={() => load(data.date)} onError={onError} />}
+      {data.me.hasGymCredentials && (
+        <BookWizard
+          date={data.date}
+          dates={data.dates}
+          onDate={(next) => {
+            setDate(next);
+            load(next);
+          }}
+          onBooked={(booked) => {
+            setDate(booked);
+            load(booked);
+          }}
+          onError={onError}
+        />
+      )}
       {data.occurrences.some((occurrence) => occurrence.checks.length > 0) && (
         <div className="checks">
           {data.occurrences.filter((occurrence) => occurrence.checks.length > 0).map((occurrence) => (
@@ -481,8 +495,15 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
 }
 
 
-function BookWizard({ date, onBooked, onError }: { date: string; onBooked: () => void; onError: (value: string) => void }) {
+function BookWizard({ date, dates, onDate, onBooked, onError }: {
+  date: string;
+  dates: string[];
+  onDate: (value: string) => void;
+  onBooked: (value: string) => void;
+  onError: (value: string) => void;
+}) {
   const { t, lang, explain } = useI18n();
+  const [day, setDay] = useState(date);
   const [time, setTime] = useState('18:00');
   const [duration, setDuration] = useState<30 | 60 | 90 | 120>(60);
   const [exact, setExact] = useState<Opening[]>([]);
@@ -503,9 +524,13 @@ function BookWizard({ date, onBooked, onError }: { date: string; onBooked: () =>
       setExact([]);
       setAlternatives([]);
       setSearched(false);
-      onBooked();
+      onBooked(day);
     }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
   }
+
+  useEffect(() => {
+    setDay(date);
+  }, [date]);
 
   return (
     <form
@@ -517,7 +542,7 @@ function BookWizard({ date, onBooked, onError }: { date: string; onBooked: () =>
         onError('');
         void api<{ exact: Opening[]; alternatives: Opening[] }>('/api/bookings/search', {
           method: 'POST',
-          body: JSON.stringify({ date, time, durationMinutes: duration }),
+          body: JSON.stringify({ date: day, time, durationMinutes: duration }),
         }).then((result) => {
           setExact(result.exact);
           setAlternatives(result.alternatives);
@@ -526,13 +551,31 @@ function BookWizard({ date, onBooked, onError }: { date: string; onBooked: () =>
       }}
     >
       <h2>{t('bookCourt')}</h2>
-      <label>{t('preferredTime')}<input type="time" value={time} onChange={(event) => setTime(event.target.value)} required /></label>
+      <p>{t('bookAnyDay')}</p>
+      <label>{t('day')}
+        <input
+          type="date"
+          value={day}
+          min={dates[0]}
+          max={dates[dates.length - 1]}
+          onChange={(event) => {
+            const next = event.target.value;
+            setDay(next);
+            setExact([]);
+            setAlternatives([]);
+            setSearched(false);
+            if (dates.includes(next)) onDate(next);
+          }}
+          required
+        />
+      </label>
+      <label>{t('preferredTime')}<input type="time" step={1800} value={time} onChange={(event) => setTime(event.target.value.slice(0, 5))} required /></label>
       <label>{t('duration')}
         <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 30 | 60 | 90 | 120)}>
           {[30, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes}</option>)}
         </select>
       </label>
-      <button className="solid" type="submit" disabled={busy || !date}>{busy ? t('setting') : t('searchCourts')}</button>
+      <button className="solid" type="submit" disabled={busy || !day}>{busy ? t('setting') : t('searchCourts')}</button>
       {saved && <p className="notice" role="status">{t('bookingSaved')}</p>}
       {searched && exact.length === 0 && alternatives.length === 0 && <p className="empty">{t('noneFree')}</p>}
       <OpeningList title={t('exactSlots')} openings={exact} lang={lang} disabled={busy} onPick={confirm} />
