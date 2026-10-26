@@ -9,6 +9,7 @@ services:
     volumes:
       - fodbs_pg:/var/lib/postgresql/data
     mem_limit: 256m
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fodbs}"]
       interval: 5s
@@ -27,7 +28,8 @@ services:
         condition: service_healthy
     ports:
       - "8088:8088"
-    mem_limit: 256m
+    mem_limit: 768m
+    restart: unless-stopped
 
   worker:
     build: .
@@ -42,6 +44,7 @@ services:
       postgres:
         condition: service_healthy
     mem_limit: 768m
+    restart: unless-stopped
 
 volumes:
   fodbs_pg:
