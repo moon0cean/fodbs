@@ -32,6 +32,7 @@ describe('scheduler', () => {
     const sessions = new SessionPool(gateway);
     await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig({ dirMaxPerDay: 1 }), log: () => undefined });
     expect(gateway.bookings.map((booking) => booking.username)).toEqual(['nif-b', 'nif-a']);
+    expect(store.reservations.map((reservation) => reservation.occupants)).toEqual([1, 1]);
     expect(store.occurrences.get('occ')?.courtsTargeted).toBe(2);
     await runSchedulerTick({ now: new Date(OPEN.getTime() + 1000), store, gateway, sessions, config: testConfig({ dirMaxPerDay: 1 }), log: () => undefined });
     expect(gateway.bookings).toHaveLength(2);
@@ -52,6 +53,17 @@ describe('scheduler', () => {
     });
     expect(gateway.bookings).toHaveLength(0);
     expect(store.occurrences.get('occ')?.courtsTargeted).toBe(0);
+  });
+
+  it('books the same court on the next account when the lightest has no bons', async () => {
+    const store = primedStore();
+    store.optedIn.set('occ', ['p1']);
+    const gateway = new FakeGymGateway();
+    gateway.noBons.add('nif-b');
+    const sessions = new SessionPool(gateway);
+    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig(), log: () => undefined });
+    expect(gateway.bookings).toEqual([expect.objectContaining({ username: 'nif-a', courtIndex: 0 })]);
+    await sessions.closeAll();
   });
 
   it('skips an account that is already at the daily cap', async () => {

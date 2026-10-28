@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, gt, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, ne } from 'drizzle-orm';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DateTime } from 'luxon';
 import postgres from 'postgres';
@@ -601,7 +601,7 @@ export class AppDatabase implements SchedulerStore {
     return null;
   }
 
-  async setSeat(userId: string, reservationId: string, join: boolean, position: Spot | null, now: Date): Promise<string | null> {
+  async setSeat(userId: string, reservationId: string, join: boolean, position: Spot | null, now: Date, prefill = true): Promise<string | null> {
     const user = await this.requireUser(userId);
     const reservation = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
     const current = reservation[0];
@@ -630,7 +630,7 @@ export class AppDatabase implements SchedulerStore {
     await this.db.transaction(async (tx) => {
       await this.persistShapes(tx, changed.reservations, now);
     });
-    if (join) await this.prefillPreferred(userId, reservationId, now);
+    if (join && prefill) await this.prefillPreferred(userId, reservationId, now);
     return null;
   }
 
@@ -1053,7 +1053,7 @@ export class AppDatabase implements SchedulerStore {
     if (rows.length > 0) return false;
     await this.db.insert(bookingAttempts).values({
       idempotencyKey: key,
-      kind: 'miss',
+      kind: 'grab',
       status: 'succeeded',
       detail: '',
       updatedAt: new Date(),
@@ -1112,8 +1112,9 @@ export class AppDatabase implements SchedulerStore {
     startsAt: Date;
     now: Date;
   }): Promise<void> {
+    const id = randomUUID();
     await this.db.insert(reservations).values({
-      id: randomUUID(),
+      id,
       occurrenceId: input.occurrenceId,
       courtIndex: input.courtIndex,
       chargedUserId: input.chargedUserId,
@@ -1122,6 +1123,21 @@ export class AppDatabase implements SchedulerStore {
       status: 'held',
       bookedAt: input.now,
     });
+    try {
+      const seatError = await this.setSeat(input.chargedUserId, id, true, 'front_left', input.now, false);
+      if (seatError) throw new Error(seatError);
+    } catch (error) {
+      await this.db.delete(reservations).where(eq(reservations.id, id));
+      throw error;
+    }
+    const opted = await this.db
+      .select({ id: users.id, active: users.active })
+      .from(availability)
+      .innerJoin(users, eq(users.id, availability.userId))
+      .where(and(eq(availability.occurrenceId, input.occurrenceId), eq(availability.declined, false), eq(users.active, true)))
+      .orderBy(asc(availability.createdAt));
+    for (const person of opted) await this.seatOptIn(person, input.occurrenceId, input.now);
+    await this.prefillPreferred(input.chargedUserId, id, input.now);
   }
 
   async heldOpen(now: Date): Promise<{
