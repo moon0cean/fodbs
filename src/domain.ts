@@ -144,15 +144,14 @@ export function frontDeadline(startsAt: Date, zone: string): Date {
 }
 
 export function shouldCancel(input: {
-  frontLeft: boolean;
-  frontRight: boolean;
+  occupants: number;
   effective: boolean;
   now: Date;
   startsAt: Date;
   zone: string;
   penaltyGuardMinutes: number;
 }): boolean {
-  if (input.effective || (input.frontLeft && input.frontRight)) return false;
+  if (input.effective || input.occupants >= 2) return false;
   if (input.now < frontDeadline(input.startsAt, input.zone)) return false;
   const shut = input.startsAt.getTime() - input.penaltyGuardMinutes * MINUTE;
   return input.now.getTime() < shut && input.now.getTime() < input.startsAt.getTime();
@@ -335,7 +334,7 @@ export function assignOptedIn(input: {
   const waiting = input.players.filter((player) => !seated.has(player.id));
   return input.courts.map((court) => {
     const holdsBooking = Boolean(court.reservationId);
-    if ((!holdsBooking && court.courtIndex >= active) || court.status === 'cancelled' || court.status === 'played' || court.status === 'skipped') return court;
+    if (holdsBooking || court.courtIndex >= active || court.status === 'cancelled' || court.status === 'played' || court.status === 'skipped') return court;
     const occupants = [...court.occupants];
     for (const position of spots) {
       if (occupants.some((occupant) => occupant.position === position)) continue;

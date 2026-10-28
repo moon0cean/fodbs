@@ -1129,8 +1129,7 @@ export class AppDatabase implements SchedulerStore {
     chargedUserId: string;
     externalRef: string;
     startsAt: Date;
-    frontLeft: boolean;
-    frontRight: boolean;
+    occupants: number;
     effective: boolean;
   }[]> {
     const held = await this.db
@@ -1147,14 +1146,13 @@ export class AppDatabase implements SchedulerStore {
       .where(and(eq(reservations.status, 'held'), gt(occurrences.startsAt, now)));
     const seatRows = await this.db.select().from(seats);
     return held.map((row) => {
-      const positions = new Set(seatRows.filter((seat) => seat.reservationId === row.id).map((seat) => seat.position));
+      const occupants = seatRows.filter((seat) => seat.reservationId === row.id).length;
       return {
         id: row.id,
         chargedUserId: row.chargedUserId,
         externalRef: row.externalRef,
         startsAt: row.startsAt ?? row.plannedStart,
-        frontLeft: positions.has('front_left'),
-        frontRight: positions.has('front_right'),
+        occupants,
         effective: row.effective,
       };
     });

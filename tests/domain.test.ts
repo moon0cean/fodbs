@@ -92,14 +92,14 @@ describe('shouldCancel', () => {
   const startsAt = new Date('2026-10-24T17:00:00.000Z');
   const zone = 'Europe/Madrid';
 
-  it('cancels a single player from 23:55 the evening before, and not inside the penalty guard', () => {
-    const missing = { frontLeft: true, frontRight: false, effective: false, startsAt, zone, penaltyGuardMinutes: 20 };
-    expect(shouldCancel({ ...missing, now: new Date('2026-10-23T21:54:00.000Z') })).toBe(false);
-    expect(shouldCancel({ ...missing, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(true);
-    expect(shouldCancel({ ...missing, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(true);
-    expect(shouldCancel({ ...missing, frontRight: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
-    expect(shouldCancel({ ...missing, effective: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
-    expect(shouldCancel({ ...missing, now: new Date('2026-10-24T16:50:00.000Z') })).toBe(false);
+  it('cancels a single player from 23:55 the evening before, and keeps two players in any boxes', () => {
+    const one = { occupants: 1, effective: false, startsAt, zone, penaltyGuardMinutes: 20 };
+    expect(shouldCancel({ ...one, now: new Date('2026-10-23T21:54:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...one, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(true);
+    expect(shouldCancel({ ...one, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(true);
+    expect(shouldCancel({ ...one, occupants: 2, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...one, effective: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...one, now: new Date('2026-10-24T16:50:00.000Z') })).toBe(false);
   });
 });
 
@@ -259,7 +259,7 @@ describe('balances and seats', () => {
       ],
     });
     expect(assigned[0]?.occupants).toEqual([]);
-    expect(assigned[3]?.occupants.map((occupant) => occupant.displayName)).toEqual(['Jonatan', 'Ana']);
+    expect(assigned[3]?.occupants.map((occupant) => occupant.displayName)).toEqual(['Jonatan']);
   });
 });
 
