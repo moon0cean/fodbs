@@ -84,7 +84,8 @@ played minutes with the reservation rows.
 Admins define a weekly slot. Members who are in before the horizon opens are
 counted. At 00:00 Madrid, `horizonDays` before the slot's date, the worker books `min(4, ceil(optedIn / 3))`
 courts on DiR. The account used is the eligible member with the lowest
-charge minus play who is still under the gym quota. The charge includes
+charge minus play who is still under the gym quota. An account that cannot
+pay with bons is skipped and the next account is tried on that same court. The charge includes
 future courts. Play counts only after the reservation has started. Sessions
 are opened shortly before that instant. A held court with fewer than two
 saved players is cancelled from 23:55 Madrid the evening before, and
@@ -161,13 +162,13 @@ confirm those admin routes are rejected.
 - **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The opening is 00:00 Madrid on the day `horizonDays` before the slot's Madrid date. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
 - **FR-021**: A grab MUST try every court at the planned time, then the same search 30 minutes earlier and 30 minutes later, staying on the same Madrid day. The reservation MUST record the time that was actually booked, and the board MUST show a court time only for a real reservation. When every try is unavailable, FODBS MUST email the opted-in members once and MUST NOT present any court as booked.
 - **FR-022**: An imported gym booking at the same Madrid start, duration, and club as a weekly slot MUST count as that slot. FODBS MUST keep one occurrence for that time, MUST show only the courts that are actually reserved, and MUST NOT grab another court once the targeted count is already reserved.
-- **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 4), the worker MUST choose the lowest charge minus play. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started.
-- **FR-014**: A grab MUST be idempotent per occurrence and court index.
+- **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 4), the worker MUST choose the lowest charge minus play. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started. When that account cannot pay with bons, the worker MUST try the next eligible account on the same court.
+- **FR-014**: A grab MUST be idempotent per occurrence, offset, and court index. Storing the reservation MUST seat the charged member in the left front box.
 - **FR-015**: The worker MUST cancel a held court with fewer than two saved occupants from 23:55 Madrid the day before the slot until `start - penaltyGuardMinutes`. The default penalty guard is 20 minutes. An occupant is a member or a guest in any box. Two occupants, or a court already effective, MUST stay. Two occupants at or after that deadline MUST make the booking effective.
 - **FR-016**: Portal calls MUST go through `GymGateway`. A portal failure MUST be recorded and MUST NOT crash the HTTP process.
 - **FR-017**: Admins MUST be able to create invites, activate or deactivate users, and create or deactivate slot rules. Members MUST NOT.
 - **FR-018**: Automated tests MUST NOT send requests to `dir.cat` or `pistes.esportiurocafort.com`.
-- **FR-020**: The worker MUST book squash on `pistes.esportiurocafort.com` by choosing the court, the Madrid start, and an end time on a 15-minute grid, then paying with a bo. The reservation counter is the external reference used to list and cancel. A missing bo, a court the club does not offer, or a duration the slot does not allow MUST fail that attempt and MUST NOT start a card payment.
+- **FR-020**: The worker MUST book squash on `pistes.esportiurocafort.com` by choosing the court, the Madrid start, and an end time on a 15-minute grid, then paying with a bo. The reservation counter is the external reference used to list and cancel. A court the club does not offer, or a duration the slot does not allow, MUST fail that attempt. A missing bo MUST fail that account for that court and the worker MUST try the next eligible account. The worker MUST NOT start a card payment.
 - **FR-019**: Deployment documentation MUST describe a separate Compose project, memory caps, no published Postgres port, and a single extra Caddy host on the existing family-net VPS.
 
 ### Key Entities

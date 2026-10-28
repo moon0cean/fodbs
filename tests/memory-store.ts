@@ -138,7 +138,7 @@ export class MemoryStore implements SchedulerStore {
       status: 'held',
       startsAt: input.startsAt,
       durationMinutes: occurrence?.durationMinutes ?? 60,
-      occupants: 0,
+      occupants: 1,
       effective: false,
     });
   }

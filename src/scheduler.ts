@@ -189,11 +189,6 @@ export async function runSchedulerTick(input: {
       if (taken.has(slot.courtIndex)) continue;
       const startsAt = new Date(occurrence.startsAt.getTime() + slot.offsetMinutes * MINUTE);
       if (startsAt.getTime() <= now.getTime() || madridDate(startsAt, config.zone) !== day) continue;
-      const account = pickAccount(await store.candidates(startsAt, now), limits);
-      if (!account) {
-        log({ msg: 'no_eligible_account', occurrenceId: occurrence.id, courtIndex: slot.courtIndex });
-        break;
-      }
       const key = `grab:${occurrence.id}:${slot.offsetMinutes}:${slot.courtIndex}`;
       const claim = await store.claimAttempt(key, 'grab', now);
       if (claim === 'busy') {
@@ -201,53 +196,83 @@ export async function runSchedulerTick(input: {
         continue;
       }
       if (claim !== 'claimed') continue;
-      const creds = await store.credentials(account.userId);
-      if (!creds) {
-        await store.finishAttempt(key, 'failed', 'missing_credentials', now);
-        continue;
-      }
-      keep.add(account.userId);
-      try {
-        const session = await sessions.get(account.userId, creds);
-        const request: GymBookRequest = {
-          clubCode: occurrence.clubCode,
-          courtIndex: slot.courtIndex,
-          startsAt,
-          durationMinutes: occurrence.durationMinutes,
-        };
-        const booked = await gateway.book(session, request);
+      const skipped = new Set<string>();
+      let bookedThis = false;
+      let failure = '';
+      while (!bookedThis) {
+        const account = pickAccount(
+          (await store.candidates(startsAt, now)).filter((candidate) => !skipped.has(candidate.userId)),
+          limits,
+        );
+        if (!account) {
+          if (skipped.size === 0) {
+            log({ msg: 'no_eligible_account', occurrenceId: occurrence.id, courtIndex: slot.courtIndex });
+            failure = '';
+          }
+          break;
+        }
+        const creds = await store.credentials(account.userId);
+        if (!creds) {
+          skipped.add(account.userId);
+          failure = 'missing_credentials';
+          continue;
+        }
+        keep.add(account.userId);
         try {
-          await store.createReservation({
+          const session = await sessions.get(account.userId, creds);
+          const request: GymBookRequest = {
+            clubCode: occurrence.clubCode,
+            courtIndex: slot.courtIndex,
+            startsAt,
+            durationMinutes: occurrence.durationMinutes,
+          };
+          const booked = await gateway.book(session, request);
+          try {
+            await store.createReservation({
+              occurrenceId: occurrence.id,
+              courtIndex: slot.courtIndex,
+              chargedUserId: account.userId,
+              externalRef: booked.externalRef,
+              startsAt,
+              now,
+            });
+          } catch (error) {
+            await gateway.cancel(session, booked.externalRef).catch(() => undefined);
+            throw error;
+          }
+          taken.add(slot.courtIndex);
+          secured += 1;
+          await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
+          await store.requestSync(account.userId);
+          log({
+            msg: 'booked',
             occurrenceId: occurrence.id,
             courtIndex: slot.courtIndex,
-            chargedUserId: account.userId,
+            offsetMinutes: slot.offsetMinutes,
+            userId: account.userId,
             externalRef: booked.externalRef,
-            startsAt,
-            now,
           });
+          bookedThis = true;
         } catch (error) {
-          await gateway.cancel(session, booked.externalRef).catch(() => undefined);
-          throw error;
+          const detail = redactSecrets(errorText(error), [creds.username, creds.password]);
+          log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex: slot.courtIndex, offsetMinutes: slot.offsetMinutes, userId: account.userId, detail });
+          if (detail === 'bons_unavailable') {
+            skipped.add(account.userId);
+            failure = detail;
+            continue;
+          }
+          failure = detail;
+          break;
         }
-        taken.add(slot.courtIndex);
-        secured += 1;
-        await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
-        await store.requestSync(account.userId);
-        log({
-          msg: 'booked',
-          occurrenceId: occurrence.id,
-          courtIndex: slot.courtIndex,
-          offsetMinutes: slot.offsetMinutes,
-          userId: account.userId,
-          externalRef: booked.externalRef,
-        });
-      } catch (error) {
-        const detail = redactSecrets(errorText(error), [creds.username, creds.password]);
-        await store.finishAttempt(key, 'failed', detail, now);
-        if (UNAVAILABLE.has(detail)) hardMiss = true;
-        else transient = true;
-        log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex: slot.courtIndex, offsetMinutes: slot.offsetMinutes, userId: account.userId, detail });
       }
+      if (bookedThis) continue;
+      if (skipped.size === 0 && failure === '') {
+        await store.finishAttempt(key, 'failed', 'no_eligible_account', now);
+        break;
+      }
+      await store.finishAttempt(key, 'failed', failure || 'no_eligible_account', now);
+      if (UNAVAILABLE.has(failure)) hardMiss = true;
+      else transient = true;
     }
     if (secured === 0 && hardMiss && !pendingRetry && !transient) {
       const claimed = await store.claimMiss(occurrence.id);
