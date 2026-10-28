@@ -64,8 +64,7 @@ export interface SchedulerStore {
     chargedUserId: string;
     externalRef: string;
     startsAt: Date;
-    frontLeft: boolean;
-    frontRight: boolean;
+    occupants: number;
     effective: boolean;
   }[]>;
   markEffective(id: string): Promise<void>;
@@ -267,14 +266,13 @@ export async function runSchedulerTick(input: {
   }
 
   for (const reservation of await store.heldOpen(now)) {
-    const frontsFilled = reservation.frontLeft && reservation.frontRight;
-    if (!reservation.effective && frontsFilled && now >= frontDeadline(reservation.startsAt, config.zone)) {
+    const kept = reservation.occupants >= 2;
+    if (!reservation.effective && kept && now >= frontDeadline(reservation.startsAt, config.zone)) {
       await store.markEffective(reservation.id);
       reservation.effective = true;
     }
     const inWindow = shouldCancel({
-      frontLeft: reservation.frontLeft,
-      frontRight: reservation.frontRight,
+      occupants: reservation.occupants,
       effective: reservation.effective,
       now,
       startsAt: reservation.startsAt,
@@ -283,8 +281,8 @@ export async function runSchedulerTick(input: {
     });
     if (!inWindow) {
       const guard = reservation.startsAt.getTime() - config.penaltyGuardMinutes * MINUTE;
-      const missingFront = !reservation.frontLeft || !reservation.frontRight;
-      if (!reservation.effective && missingFront && now.getTime() >= guard && now.getTime() < reservation.startsAt.getTime()) {
+      const short = reservation.occupants < 2;
+      if (!reservation.effective && short && now.getTime() >= guard && now.getTime() < reservation.startsAt.getTime()) {
         log({ msg: 'cancel_skipped_penalty_guard', reservationId: reservation.id });
       }
       continue;

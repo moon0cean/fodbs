@@ -10,8 +10,7 @@ export type MemoryReservation = {
   status: 'held' | 'cancelled' | 'played';
   startsAt: Date;
   durationMinutes: number;
-  frontLeft: boolean;
-  frontRight: boolean;
+  occupants: number;
   effective: boolean;
 };
 
@@ -139,8 +138,7 @@ export class MemoryStore implements SchedulerStore {
       status: 'held',
       startsAt: input.startsAt,
       durationMinutes: occurrence?.durationMinutes ?? 60,
-      frontLeft: false,
-      frontRight: false,
+      occupants: 0,
       effective: false,
     });
   }
@@ -153,8 +151,7 @@ export class MemoryStore implements SchedulerStore {
         chargedUserId: reservation.chargedUserId,
         externalRef: reservation.externalRef,
         startsAt: reservation.startsAt,
-        frontLeft: reservation.frontLeft,
-        frontRight: reservation.frontRight,
+        occupants: reservation.occupants,
         effective: reservation.effective,
       }));
   }

@@ -170,8 +170,7 @@ describe('scheduler', () => {
       status: 'held',
       startsAt: START,
       durationMinutes: 60,
-      frontLeft: false,
-      frontRight: true,
+      occupants: 2,
       effective: true,
     });
     const gateway = new FakeGymGateway();
@@ -206,8 +205,7 @@ describe('scheduler', () => {
       status: 'held',
       startsAt,
       durationMinutes: 60,
-      frontLeft: false,
-      frontRight: false,
+      occupants: 0,
       effective: false,
     });
     const gateway = new FakeGymGateway();
