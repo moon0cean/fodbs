@@ -430,6 +430,7 @@ export class AppDatabase implements SchedulerStore {
       status: string;
       durationMinutes: number;
       clubCode: string;
+      players: string[];
     }[];
   }> {
     const creds = await this.db.select().from(gymCredentials).where(eq(gymCredentials.userId, userId)).limit(1);
@@ -437,6 +438,8 @@ export class AppDatabase implements SchedulerStore {
       ? decryptSecret(creds[0].usernameCiphertext, creds[0].usernameNonce, this.config.credentialsKey, userId)
       : null;
     const rows = await this.balanceRows();
+    const seatRows = await this.db.select().from(seats);
+    const names = new Map((await this.db.select({ id: users.id, displayName: users.displayName }).from(users)).map((person) => [person.id, person.displayName]));
     const charged = rows
       .filter((row) => courtPayer(row) === userId || row.chargedUserId === userId)
       .map((row) => ({
@@ -446,6 +449,10 @@ export class AppDatabase implements SchedulerStore {
         status: row.status,
         durationMinutes: row.durationMinutes,
         clubCode: row.clubCode,
+        players: seatRows
+          .filter((seat) => seat.reservationId === row.id)
+          .map((seat) => (seat.userId ? (names.get(seat.userId) ?? '') : (seat.guestName?.trim() ?? '')))
+          .filter((name) => name.length > 0),
       }))
       .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
     return {
@@ -476,7 +483,7 @@ export class AppDatabase implements SchedulerStore {
         displayName: person.displayName,
         ...balanceMinutes(rows, now, this.config.zone, person.id),
       }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      .sort((a, b) => b.playedMinutes - a.playedMinutes || b.bookedMinutes - a.bookedMinutes || a.displayName.localeCompare(b.displayName));
     const day = DateTime.fromISO(date, { zone: this.config.zone }).startOf('day');
     const next = day.plus({ days: 1 });
     const occs = await this.db.select().from(occurrences);
@@ -835,6 +842,63 @@ export class AppDatabase implements SchedulerStore {
       await this.persistShapes(tx, [removed.reservation], now);
     });
     return null;
+  }
+
+  async removeHeldPlayer(actorId: string, reservationId: string, seatId: string, now: Date): Promise<string | null> {
+    const reservation = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+    const current = reservation[0];
+    if (!current) return 'missing';
+    if (current.status !== 'held') return 'not_held';
+    const occ = await this.occurrence(current.occurrenceId);
+    if (!occ) return 'missing';
+    const startsAt = current.startsAt ?? occ.startsAt;
+    if (now.getTime() >= startsAt.getTime()) return 'started';
+    const seatRows = await this.db.select().from(seats);
+    const seat = seatRows.find((item) => item.id === seatId && item.reservationId === reservationId);
+    if (!seat) return 'missing';
+    if (!seat.userId) return this.removeCourtGuest(actorId, reservationId, seatId, now);
+    if (seat.userId === actorId) {
+      if (current.chargedUserId === actorId) return 'cancel_required';
+      return this.setSeat(actorId, reservationId, false, null, now);
+    }
+    if (current.chargedUserId !== actorId) return 'not_owner';
+    const group = await this.db.select().from(reservations).where(eq(reservations.occurrenceId, current.occurrenceId));
+    const changed = placeMember({
+      reservations: group.map((row) => this.shapeReservation(row, seatRows)),
+      actorId: seat.userId,
+      actorActive: true,
+      targetId: reservationId,
+      position: 'front_left',
+      join: false,
+      now,
+      startsAt,
+      seatId: randomUUID(),
+    });
+    if (!changed.ok) return changed.error;
+    await this.db.transaction(async (tx) => {
+      await this.persistShapes(tx, changed.reservations, now);
+    });
+    return null;
+  }
+
+  async heldForHolderCancel(userId: string, reservationId: string, now: Date): Promise<{ externalRef: string } | string> {
+    const reservation = await this.db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+    const current = reservation[0];
+    if (!current) return 'missing';
+    if (current.chargedUserId !== userId) return 'not_owner';
+    if (current.status !== 'held') return 'not_held';
+    const occ = await this.occurrence(current.occurrenceId);
+    if (!occ) return 'missing';
+    const startsAt = current.startsAt ?? occ.startsAt;
+    if (now.getTime() >= startsAt.getTime()) return 'started';
+    return { externalRef: current.externalRef };
+  }
+
+  async memberBookings(userId: string, now: Date): Promise<{ displayName: string; reservations: Awaited<ReturnType<AppDatabase['accountView']>>['reservations'] } | null> {
+    const person = await this.db.select({ id: users.id, displayName: users.displayName }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!person[0]) return null;
+    const view = await this.accountView(userId, now);
+    return { displayName: person[0].displayName, reservations: view.reservations };
   }
 
   async savePreferences(input: {

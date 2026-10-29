@@ -8,15 +8,15 @@ This feature amends the board in `001-court-booking` and the seating rules in `0
 
 The board shows how many courts the group still has to play, not a copy of one person's hours.
 
-1. **Given** three future courts this Madrid week and one next week, **When** a member opens the board, **Then** the group card shows those court counts and the roster has no personal hour difference.
+1. **Given** three future courts this Madrid week and one next week, **When** a member opens the board, **Then** the group card shows those court counts and the roster shows each active member's played hours, booked hours, and difference, most played first, eight per page.
 2. **Given** a member, **When** they open Cuenta, **Then** the five personal hour figures are still there.
 
 ### User Story 2 - Book a free court by hand (Priority: P1)
 
 A member with a DiR account can look for a court and book one.
 
-1. **Given** a free court at the requested time, **When** they search, **Then** that court is listed before any alternative.
-2. **Given** no court at that time and a free court 30 minutes earlier the same Madrid day, **When** they search, **Then** the earlier court is listed as an alternative.
+1. **Given** a free court at the requested hour, **When** they search, **Then** that court is listed.
+2. **Given** the selected day, **When** they move an hour earlier or later, **Then** the search uses that hour and stays on the same Madrid day, from 07:00 through 22:00.
 3. **Given** they confirm a free court, **When** the booking succeeds, **Then** it is charged to their DiR account and they are seated.
 4. **Given** they are already at the daily or simultaneous cap, **When** they confirm, **Then** nothing is booked.
 
@@ -37,13 +37,14 @@ A member keeps an ordered list of other members and guest names. The list fills 
 
 ## Requirements *(mandatory)*
 
-- **FR-201**: The board MUST show group court counts for this Madrid week still to play, next week, and already started. Each non-cancelled reservation counts once. The roster MUST NOT show a personal hour difference.
+- **FR-201**: The board MUST show group court counts for this Madrid week still to play, next week, and already started. Each non-cancelled reservation counts once. The active-player roster MUST show played hours, booked hours, and the difference, sorted by played hours, eight people per page.
 - **FR-202**: Cuenta MUST keep the personal booked, this week, next week, played, and difference figures.
-- **FR-203**: A member with DiR credentials MUST be able to search a day, time, and duration, including a day or time that is not a weekly turn. The search reads the club form and MUST NOT confirm a payment or a booking. Exact free courts come first, then free courts 30 minutes earlier or later on the same Madrid day when that offset is enabled.
+- **FR-203**: A member with DiR credentials MUST be able to search a day, time, and duration, including a day or time that is not a weekly turn. The search reads the club form and MUST NOT confirm a payment or a booking. It lists free courts at that hour. Earlier and later move the hour by 60 minutes on the same Madrid day, from 07:00 through 22:00, and MUST NOT use the worker's ±30 minute setting.
 - **FR-204**: Confirming a search result MUST book that court on the member's DiR account, store the reservation, and seat them, unless the daily or simultaneous cap says no.
 - **FR-205**: An admin MUST be able to set days ahead (default 7), how often the worker checks (default 15 seconds), and whether it may try ±30 minutes (default on). The worker uses those values, and the environment values when no row exists.
 - **FR-206**: An admin MUST be able to enable an availability check on one DiR account, every N hours (default 6). The check uses the same read-only look as the wizard. Results appear on the board for courts that have no reservation.
 - **FR-207**: A member MUST be able to save an ordered list of other members and guest names. After they book or sit, empty spots are filled from that list. Preferred members are seated when the actor is the charged account, and requested otherwise. Guest names are added only when the actor may add a guest. The list MUST NOT create a club booking and MUST NOT send mail.
+- **FR-208**: A closed help mark on the group card, the roster, booking, opt-in, the court, bonos, and charged bookings MUST expand a short note and MUST stay closed until opened.
 
 ## Assumptions
 

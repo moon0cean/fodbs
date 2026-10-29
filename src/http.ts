@@ -216,16 +216,13 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     const creds = await db.credentials(user.id);
     if (!creds) return fail(reply, 400, 'no_credentials');
     if (!gateway.ready()) return fail(reply, 400, 'gym_flow_unconfigured');
-    const settings = await db.schedulerSettings();
     const session = await gateway.openSession(creds);
     try {
       return await searchOpenings({
         gateway,
         session,
-        zone: config.zone,
         now: new Date(),
         maxCourts: Math.min(config.maxCourts, 4),
-        tryOffset: settings?.tryOffset ?? true,
         startsAt,
         durationMinutes: body.durationMinutes,
         clubCode: 'ROC',
@@ -375,9 +372,65 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     return reply.code(204).send();
   });
 
+  app.delete('/api/reservations/:id/seats/:seatId', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const params = z.object({ id: z.string().min(1), seatId: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.removeHeldPlayer(user.id, params.data.id, params.data.seatId, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/reservations/:id/cancel', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const now = new Date();
+    const ready = await db.heldForHolderCancel(user.id, params.data.id, now);
+    if (typeof ready === 'string') {
+      if (ready === 'missing') return fail(reply, 404, ready);
+      return fail(reply, 400, ready);
+    }
+    const claim = await db.claimAttempt(`cancel:${params.data.id}`, 'cancel', now);
+    if (claim !== 'claimed') return fail(reply, 400, 'not_held');
+    const creds = await db.credentials(user.id);
+    if (!creds) {
+      await db.finishAttempt(`cancel:${params.data.id}`, 'failed', 'missing_credentials', now);
+      return fail(reply, 400, 'no_credentials');
+    }
+    if (!gateway.ready()) {
+      await db.finishAttempt(`cancel:${params.data.id}`, 'failed', 'gym_flow_unconfigured', now);
+      return fail(reply, 400, 'gym_flow_unconfigured');
+    }
+    const session = await gateway.openSession(creds);
+    try {
+      await gateway.cancel(session, ready.externalRef);
+      await db.markCancelled(params.data.id, now);
+      await db.finishAttempt(`cancel:${params.data.id}`, 'succeeded', ready.externalRef, now);
+      return reply.code(204).send();
+    } catch {
+      await db.finishAttempt(`cancel:${params.data.id}`, 'failed', 'cancel_failed', now);
+      return fail(reply, 400, 'cancel_failed');
+    } finally {
+      await gateway.close(session);
+    }
+  });
+
   app.get('/api/admin/users', async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
     return { users: await db.listUsers() };
+  });
+
+  app.get('/api/admin/users/:id/bookings', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return fail(reply, 400, 'invalid_body');
+    const found = await db.memberBookings(params.data.id, new Date());
+    if (!found) return fail(reply, 404, 'missing');
+    return found;
   });
 
   app.patch('/api/admin/users/:id', async (request, reply) => {

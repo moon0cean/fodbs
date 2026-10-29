@@ -109,6 +109,21 @@ function SquashCourt({
       .catch((reason: unknown) => onError(text(reason, explain)));
   }
 
+  function removePlayer(occupantId: string) {
+    if (!court.reservationId) return;
+    void api(`/api/reservations/${court.reservationId}/seats/${occupantId}`, { method: 'DELETE' })
+      .then(onChange)
+      .catch((reason: unknown) => onError(text(reason, explain)));
+  }
+
+  function cancelCourt() {
+    if (!court.reservationId) return;
+    if (!window.confirm(t('cancelCourtConfirm'))) return;
+    void api(`/api/reservations/${court.reservationId}/cancel`, { method: 'POST' })
+      .then(onChange)
+      .catch((reason: unknown) => onError(text(reason, explain)));
+  }
+
   return (
     <div className={`court-body status-${court.status}`}>
       <div className="diagram" aria-label={`${t('court')} ${courtNumber(court.courtIndex)}`}>
@@ -121,28 +136,40 @@ function SquashCourt({
           const person = occupant(spot);
           const own = person?.userId === meId;
           const isGuest = Boolean(person && !person.userId);
+          const holder = Boolean(person?.userId && person.userId === court.ownerId);
           const blocked = Boolean(person && !own) || !joinable;
           const label = person ? (person.displayName || t('guest')) : '+';
+          const canRemove = Boolean(person && joinable && (
+            (isGuest && (mine || court.ownerId === meId))
+            || own
+            || (court.ownerId === meId && person.userId)
+          ));
           return (
             <div key={spot} className={`bubble-slot ${spot}`}>
               <button
                 type="button"
-                className={`bubble ${person ? 'filled' : ''} ${isGuest ? 'guest' : ''}`}
+                className={`bubble ${person ? 'filled' : ''} ${isGuest ? 'guest' : ''} ${holder ? 'holder' : ''}`}
                 disabled={blocked && !own}
                 onClick={() => {
                   if (!joinable || isGuest) return;
+                  if (own && court.ownerId === meId) return;
                   sit(spot);
                 }}
               >
                 <strong>{person ? initials(person.displayName || t('guest')) : '+'}</strong>
                 <span>{label}</span>
               </button>
-              {isGuest && joinable && mine && person && (
+              {canRemove && person && (
                 <button
                   type="button"
                   className="guest-x"
                   aria-label={`${t('removeGuest')} ${label}`}
-                  onClick={() => removeGuest(person.id)}
+                  onClick={() => {
+                    if (isGuest) removeGuest(person.id);
+                    else if (own && court.ownerId === meId) cancelCourt();
+                    else if (own) sit(spot);
+                    else removePlayer(person.id);
+                  }}
                 >
                   ×
                 </button>

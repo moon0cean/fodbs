@@ -28,7 +28,7 @@ The admin area has a left sidebar with members, invites, requests, and weekly sl
 - **FR-302**: An admin MUST be able to send an invite email to an address. The message contains the link that accepts the invite.
 - **FR-303**: A visitor MUST be able to request access with an email address. A repeated request for the same address stays a single pending request. The response MUST NOT reveal whether that address already has an account.
 - **FR-304**: An admin MUST be able to approve a request, which sends an invite to that address, or reject it.
-- **FR-305**: The admin screen MUST use a sidebar for members, invites, requests, and slots. Members and invites MUST be tables. A cog MUST open the row actions: activate, deactivate, and remove for a member; resend and revoke for an invite; approve and reject for a request.
+- **FR-305**: The admin screen MUST use a sidebar for members, invites, requests, and slots. Members and invites MUST be tables. A cog MUST open the row actions: activate, deactivate, and remove for a member; resend and revoke for an invite; approve and reject for a request. The member cog MUST also open that member's charged bookings in a dialog. Those bookings, and the charged bookings on Cuenta, MUST be paginated eight per page.
 - **FR-306**: Remove MUST refuse the signed-in admin, the last admin, and a member who already has bookings.
 
 ## Assumptions

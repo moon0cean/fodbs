@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type Opening, type SessionUser } from './api';
 import { AdminScreen } from './Admin';
 import { CourtCard } from './Court';
+import { Help } from './Help';
+import { PAGE_SIZE, Pager } from './Pager';
 import { courtNumber } from './courts';
 import { useI18n, type Lang } from './i18n';
 
@@ -150,6 +152,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
   const { t, lang, explain } = useI18n();
   const [data, setData] = useState<Dashboard | null>(null);
   const [date, setDate] = useState('');
+  const [rosterPage, setRosterPage] = useState(0);
 
   function load(next = date) {
     const query = next ? `?date=${next}` : '';
@@ -172,7 +175,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
     <main className="panel">
       <section className="summary">
         <article className="balance">
-          <h2>{t('groupBalance')}</h2>
+          <h2>{t('groupBalance')}<Help text={t('helpGroup')} /></h2>
           <div className="figures">
             <p><span>{t('weekCourts')}</span><strong>{data.group.weekRemaining}</strong></p>
             <p><span>{t('nextWeekCourts')}</span><strong>{data.group.nextWeek}</strong></p>
@@ -180,15 +183,18 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
           </div>
         </article>
         <div className="roster">
-          <h2>{t('activePlayers')}</h2>
+          <h2>{t('activePlayers')}<Help text={t('helpRoster')} /></h2>
+          <p className="hint">{t('played')} · {t('booked')} · {t('delta')}</p>
           <ul>
-            {data.activeUsers.map((user) => (
+            {data.activeUsers.slice(rosterPage * PAGE_SIZE, rosterPage * PAGE_SIZE + PAGE_SIZE).map((user) => (
               <li key={user.id}>
                 <span className="avatar">{initials(user.displayName)}</span>
-                <span>{user.displayName}</span>
+                <span className="who">{user.displayName}</span>
+                <span className="mini">{hours(user.playedMinutes)} · {hours(user.bookedMinutes)} · {signedHours(user.differenceMinutes)}</span>
               </li>
             ))}
           </ul>
+          <Pager page={rosterPage} pages={Math.ceil(data.activeUsers.length / PAGE_SIZE)} onPage={setRosterPage} />
         </div>
       </section>
       <p className="venue">{t('venue')}</p>
@@ -236,7 +242,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       )}
       {data.occurrences.some((occurrence) => !occurrence.courts.some((court) => court.reservationId)) && (
         <section className="panel-block">
-          <h2>{t('countMe')}</h2>
+          <h2>{t('countMe')}<Help text={t('helpOptIn')} /></h2>
           <table className="data">
             <thead>
               <tr>
@@ -271,6 +277,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
         </section>
       )}
       <section className="slot">
+        <h2>{t('court')}<Help text={t('helpCourt')} /></h2>
         {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
         <div className="slot-layout">
           <div className="courts">
@@ -312,6 +319,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   const [syncedNote, setSyncedNote] = useState(false);
   const [active, setActive] = useState(true);
   const [section, setSection] = useState<'hours' | 'club' | 'play' | 'status'>('hours');
+  const [bookingPage, setBookingPage] = useState(0);
   const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
   const [preferredTime, setPreferredTime] = useState('19:00');
   const [partySize, setPartySize] = useState<2 | 3>(3);
@@ -358,36 +366,41 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       <>
       <BalanceCard title={t('yourBalance')} balance={account.balance} />
       <section>
-      <h2>{t('bookedOnYou')}</h2>
+      <h2>{t('bookedOnYou')}<Help text={t('helpBookings')} /></h2>
       {account.reservations.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
       {account.reservations.length > 0 && (
+        <>
         <table className="data">
           <thead>
             <tr>
               <th>{t('when')}</th>
               <th>{t('court')}</th>
+              <th>{t('players')}</th>
               <th>{t('status')}</th>
               <th>{t('duration')}</th>
             </tr>
           </thead>
           <tbody>
-            {account.reservations.map((reservation) => (
+            {account.reservations.slice(bookingPage * PAGE_SIZE, bookingPage * PAGE_SIZE + PAGE_SIZE).map((reservation) => (
               <tr key={reservation.id}>
                 <td>{clock(reservation.startsAt, lang)}</td>
                 <td>{courtNumber(reservation.courtIndex)}</td>
+                <td>{reservation.players.join(', ')}</td>
                 <td>{status(reservation.status)}</td>
                 <td>{hours(reservation.durationMinutes)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <Pager page={bookingPage} pages={Math.ceil(account.reservations.length / PAGE_SIZE)} onPage={setBookingPage} />
+        </>
       )}
       </section>
       </>
       )}
       {section === 'club' && (
       <section>
-        <h2>{t('bons')}</h2>
+        <h2>{t('bons')}<Help text={t('helpBons')} /></h2>
         <p className="bons">{account.bonsRemaining == null ? t('bonsUnknown') : account.bonsRemaining}</p>
         <button
           className="solid"
@@ -534,7 +547,6 @@ function BookWizard({ date, onBooked, onError }: {
   const [time, setTime] = useState('18:00');
   const [duration, setDuration] = useState<30 | 60 | 90 | 120>(60);
   const [exact, setExact] = useState<Opening[]>([]);
-  const [alternatives, setAlternatives] = useState<Opening[]>([]);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -549,7 +561,6 @@ function BookWizard({ date, onBooked, onError }: {
     }).then(() => {
       setSaved(true);
       setExact([]);
-      setAlternatives([]);
       setSearched(false);
       onBooked();
     }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
@@ -557,29 +568,38 @@ function BookWizard({ date, onBooked, onError }: {
 
   useEffect(() => {
     setExact([]);
-    setAlternatives([]);
     setSearched(false);
     setSaved(false);
   }, [date]);
 
+  function search(nextTime: string) {
+    setBusy(true);
+    setSaved(false);
+    onError('');
+    void api<{ exact: Opening[] }>('/api/bookings/search', {
+      method: 'POST',
+      body: JSON.stringify({ date, time: nextTime, durationMinutes: duration }),
+    }).then((result) => {
+      setExact(result.exact);
+      setSearched(true);
+    }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
+  }
+
+  function shift(minutes: number) {
+    const next = shiftHour(time, minutes, date);
+    if (!next) return;
+    setTime(next);
+    search(next);
+  }
+
   return (
     <section className="panel-block">
-      <h2>{t('bookCourt')}</h2>
+      <h2>{t('bookCourt')}<Help text={t('helpBook')} /></h2>
       <p className="hint">{t('bookAnyDay')}</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setBusy(true);
-          setSaved(false);
-          onError('');
-          void api<{ exact: Opening[]; alternatives: Opening[] }>('/api/bookings/search', {
-            method: 'POST',
-            body: JSON.stringify({ date, time, durationMinutes: duration }),
-          }).then((result) => {
-            setExact(result.exact);
-            setAlternatives(result.alternatives);
-            setSearched(true);
-          }).catch((reason: unknown) => onError(message(reason, explain))).finally(() => setBusy(false));
+          search(time);
         }}
       >
         <div className="inline-fields">
@@ -591,10 +611,14 @@ function BookWizard({ date, onBooked, onError }: {
           </label>
           <button className="solid" type="submit" disabled={busy || !date}>{busy ? t('setting') : t('searchCourts')}</button>
         </div>
+        <div className="hour-pager">
+          <button type="button" className="ghost" disabled={busy || !shiftHour(time, -60, date)} onClick={() => shift(-60)}>{t('earlierHour')}</button>
+          <strong>{time}</strong>
+          <button type="button" className="ghost" disabled={busy || !shiftHour(time, 60, date)} onClick={() => shift(60)}>{t('laterHour')}</button>
+        </div>
         {saved && <p className="notice" role="status">{t('bookingSaved')}</p>}
-        {searched && exact.length === 0 && alternatives.length === 0 && <p className="empty">{t('noneFree')}</p>}
+        {searched && exact.length === 0 && <p className="empty">{t('noneFree')}</p>}
         <OpeningList title={t('exactSlots')} openings={exact} lang={lang} disabled={busy} onPick={confirm} />
-        <OpeningList title={t('otherSlots')} openings={alternatives} lang={lang} disabled={busy} onPick={confirm} />
       </form>
     </section>
   );
@@ -761,6 +785,27 @@ function readInviteToken(): string {
 
 function message(reason: unknown, explain: (code: string) => string): string {
   return reason instanceof ApiError ? explain(reason.message) : explain('request_failed');
+}
+
+function shiftHour(time: string, minutes: number, date: string): string | null {
+  const [hourText, minuteText] = time.split(':');
+  const total = Number(hourText) * 60 + Number(minuteText) + minutes;
+  if (total < 7 * 60 || total > 22 * 60) return null;
+  if (date === madridToday() && total <= madridNowMinutes()) return null;
+  const hour = String(Math.floor(total / 60)).padStart(2, '0');
+  const minute = String(total % 60).padStart(2, '0');
+  return `${hour}:${minute}`;
+}
+
+function madridToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+}
+
+function madridNowMinutes(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
+  return hour * 60 + minute;
 }
 
 function hours(minutes: number): string {

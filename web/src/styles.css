@@ -81,6 +81,30 @@ fieldset.days button.on { border-color: var(--ball); }
 .bars i.played { background: var(--line); }
 .roster ul, .ledger { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .roster li, .ledger li { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.roster .who { flex: 1; min-width: 0; }
+.roster .mini { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.hour-pager, .pager { display: flex; gap: 8px; align-items: center; }
+.hour-pager strong, .pager span { min-width: 4.5rem; text-align: center; }
+.help { position: relative; display: inline-flex; margin-left: 8px; vertical-align: middle; }
+.help-mark { min-height: 28px; width: 28px; padding: 0; border: 1px solid #6d6458; border-radius: 999px; }
+.help-note {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 4;
+  width: min(22rem, 70vw);
+  background: #2a241e;
+  border: 1px solid #4a4036;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+h2 .help { font-family: Outfit, "Avenir Next", sans-serif; }
+.modal-back { position: fixed; inset: 0; z-index: 6; background: rgba(12, 9, 6, 0.62); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(720px, 100%); max-height: min(80vh, 720px); overflow: auto; background: #241e19; border: 1px solid #4a4036; border-radius: 16px; padding: 16px; display: grid; gap: 12px; }
+.modal h2 { margin: 0; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--court); color: var(--line); font-size: 12px; }
 
 .slider { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0; max-width: 100%; }
@@ -183,6 +207,7 @@ fieldset.days button.on { border-color: var(--ball); }
 .bubble span { font-size: 9px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bubble.filled { background: var(--paper); color: var(--ink); }
 .bubble.guest { background: var(--ball); color: var(--ink); }
+.bubble.holder { background: #c9d7f2; color: var(--ink); border-color: #1c3f73; }
 .bubble:disabled { opacity: 0.9; }
 .bubble-slot { position: absolute; width: 18%; aspect-ratio: 1; }
 .bubble-slot .bubble {

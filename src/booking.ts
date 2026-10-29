@@ -1,5 +1,3 @@
-import { DateTime } from 'luxon';
-import { slotsToTry } from './domain.js';
 import type { GymBookRequest, GymGateway, GymSession } from './gym/gateway.js';
 
 export type Opening = { courtIndex: number; startsAt: string; offsetMinutes: number };
@@ -7,31 +5,23 @@ export type Opening = { courtIndex: number; startsAt: string; offsetMinutes: num
 export async function searchOpenings(input: {
   gateway: GymGateway;
   session: GymSession;
-  zone: string;
   now: Date;
   maxCourts: number;
-  tryOffset: boolean;
   startsAt: Date;
   durationMinutes: number;
   clubCode: string;
-}): Promise<{ exact: Opening[]; alternatives: Opening[] }> {
-  const day = DateTime.fromJSDate(input.startsAt, { zone: input.zone }).toISODate();
+}): Promise<{ exact: Opening[] }> {
   const exact: Opening[] = [];
-  const alternatives: Opening[] = [];
-  for (const slot of slotsToTry(input.maxCourts, input.tryOffset)) {
-    const startsAt = new Date(input.startsAt.getTime() + slot.offsetMinutes * 60_000);
-    if (startsAt.getTime() <= input.now.getTime()) continue;
-    if (DateTime.fromJSDate(startsAt, { zone: input.zone }).toISODate() !== day) continue;
+  if (input.startsAt.getTime() <= input.now.getTime()) return { exact };
+  for (let courtIndex = 0; courtIndex < input.maxCourts; courtIndex += 1) {
     const request: GymBookRequest = {
       clubCode: input.clubCode,
-      courtIndex: slot.courtIndex,
-      startsAt,
+      courtIndex,
+      startsAt: input.startsAt,
       durationMinutes: input.durationMinutes,
     };
     if (await input.gateway.inspect(input.session, request) !== 'free') continue;
-    const opening = { courtIndex: slot.courtIndex, startsAt: startsAt.toISOString(), offsetMinutes: slot.offsetMinutes };
-    if (slot.offsetMinutes === 0) exact.push(opening);
-    else alternatives.push(opening);
+    exact.push({ courtIndex, startsAt: input.startsAt.toISOString(), offsetMinutes: 0 });
   }
-  return { exact, alternatives };
+  return { exact };
 }
