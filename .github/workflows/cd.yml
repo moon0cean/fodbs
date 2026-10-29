@@ -88,4 +88,6 @@ jobs:
             sleep 3
           done
           test "$ok" = 1
+          docker image prune -f
+          docker builder prune -f
           REMOTE
