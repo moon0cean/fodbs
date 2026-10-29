@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type Opening, type SessionUser } from './api';
 import { AdminScreen } from './Admin';
 import { CourtCard } from './Court';
-import { Help } from './Help';
+import { Title } from './Help';
 import { PAGE_SIZE, Pager } from './Pager';
 import { courtNumber } from './courts';
 import { useI18n, type Lang } from './i18n';
@@ -175,7 +175,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
     <main className="panel">
       <section className="summary">
         <article className="balance">
-          <h2>{t('groupBalance')}<Help text={t('helpGroup')} /></h2>
+          <Title title={t('groupBalance')} help={t('helpGroup')} />
           <div className="figures">
             <p><span>{t('weekCourts')}</span><strong>{data.group.weekRemaining}</strong></p>
             <p><span>{t('nextWeekCourts')}</span><strong>{data.group.nextWeek}</strong></p>
@@ -183,7 +183,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
           </div>
         </article>
         <div className="roster">
-          <h2>{t('activePlayers')}<Help text={t('helpRoster')} /></h2>
+          <Title title={t('activePlayers')} help={t('helpRoster')} />
           <p className="hint">{t('played')} · {t('booked')} · {t('delta')}</p>
           <ul>
             {data.activeUsers.slice(rosterPage * PAGE_SIZE, rosterPage * PAGE_SIZE + PAGE_SIZE).map((user) => (
@@ -242,7 +242,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
       )}
       {data.occurrences.some((occurrence) => !occurrence.courts.some((court) => court.reservationId)) && (
         <section className="panel-block">
-          <h2>{t('countMe')}<Help text={t('helpOptIn')} /></h2>
+          <Title title={t('countMe')} help={t('helpOptIn')} />
           <table className="data">
             <thead>
               <tr>
@@ -277,7 +277,7 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
         </section>
       )}
       <section className="slot">
-        <h2>{t('court')}<Help text={t('helpCourt')} /></h2>
+        <Title title={t('court')} help={t('helpCourt')} />
         {data.occurrences.length === 0 && <p className="empty">{t('noSlot')}</p>}
         <div className="slot-layout">
           <div className="courts">
@@ -366,7 +366,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       <>
       <BalanceCard title={t('yourBalance')} balance={account.balance} />
       <section>
-      <h2>{t('bookedOnYou')}<Help text={t('helpBookings')} /></h2>
+      <Title title={t('bookedOnYou')} help={t('helpBookings')} />
       {account.reservations.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
       {account.reservations.length > 0 && (
         <>
@@ -400,7 +400,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
       )}
       {section === 'club' && (
       <section>
-        <h2>{t('bons')}<Help text={t('helpBons')} /></h2>
+        <Title title={t('bons')} help={t('helpBons')} />
         <p className="bons">{account.bonsRemaining == null ? t('bonsUnknown') : account.bonsRemaining}</p>
         <button
           className="solid"
@@ -594,7 +594,7 @@ function BookWizard({ date, onBooked, onError }: {
 
   return (
     <section className="panel-block">
-      <h2>{t('bookCourt')}<Help text={t('helpBook')} /></h2>
+      <Title title={t('bookCourt')} help={t('helpBook')} />
       <p className="hint">{t('bookAnyDay')}</p>
       <form
         onSubmit={(event) => {

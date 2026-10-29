@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type SessionUser } from './api';
 import { courtNumber } from './courts';
-import { Help } from './Help';
+import { Title } from './Help';
 import { PAGE_SIZE, Pager } from './Pager';
 import { useI18n, type Lang } from './i18n';
 
@@ -332,7 +332,7 @@ export function AdminScreen({ me }: { me: SessionUser }) {
       {bookings && (
         <div className="modal-back" onClick={() => setBookings(null)}>
           <div className="modal" role="dialog" aria-modal="true" aria-label={bookings.name} onClick={(event) => event.stopPropagation()}>
-            <h2>{bookings.name}<Help text={t('helpBookings')} /></h2>
+            <Title title={bookings.name} help={t('helpBookings')} />
             {bookings.rows.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
             {bookings.rows.length > 0 && (
               <table className="data">

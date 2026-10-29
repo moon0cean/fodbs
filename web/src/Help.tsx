@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useI18n } from './i18n';
 
+export function Title({ title, help }: { title: string; help: string }) {
+  return (
+    <div className="title-line">
+      <h2>{title}</h2>
+      <Help text={help} />
+    </div>
+  );
+}
+
 export function Help({ text }: { text: string }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);

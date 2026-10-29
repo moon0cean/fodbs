@@ -85,7 +85,9 @@ fieldset.days button.on { border-color: var(--ball); }
 .roster .mini { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .hour-pager, .pager { display: flex; gap: 8px; align-items: center; }
 .hour-pager strong, .pager span { min-width: 4.5rem; text-align: center; }
-.help { position: relative; display: inline-flex; margin-left: 8px; vertical-align: middle; }
+.title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.title-line h2 { margin: 0; }
+.help { position: relative; display: inline-flex; vertical-align: middle; }
 .help-mark { min-height: 28px; width: 28px; padding: 0; border: 1px solid #6d6458; border-radius: 999px; }
 .help-note {
   position: absolute;
