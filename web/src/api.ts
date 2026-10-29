@@ -106,5 +106,6 @@ export type Account = {
     status: string;
     durationMinutes: number;
     clubCode: string;
+    players: string[];
   }[];
 };

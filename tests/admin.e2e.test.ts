@@ -77,7 +77,7 @@ test('a visitor request is approved from the admin table', async () => {
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await page.getByRole('button', { name: 'Administración', exact: true }).click();
   await page.getByRole('cell', { name: 'Bea', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Acciones', exact: true }).click();
+  await page.getByRole('row', { name: /Bea/ }).getByRole('button', { name: 'Acciones', exact: true }).click();
   await page.getByRole('button', { name: 'Desactivar', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Eliminar', exact: true }).waitFor();
 

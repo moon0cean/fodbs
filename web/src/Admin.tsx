@@ -1,6 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type SessionUser } from './api';
+import { courtNumber } from './courts';
+import { Title } from './Help';
+import { PAGE_SIZE, Pager } from './Pager';
 import { useI18n, type Lang } from './i18n';
+
+type ChargedBooking = {
+  id: string;
+  startsAt: string;
+  courtIndex: number;
+  status: string;
+  durationMinutes: number;
+  players: string[];
+};
 
 type Member = { id: string; email: string; displayName: string; role: string; active: boolean; hasGymCredentials: boolean };
 type Invite = { id: string; role: string; email: string | null; expiresAt: string; usedAt: string | null };
@@ -9,7 +21,7 @@ type Rule = { id: string; weekday: number; startTime: string; durationMinutes: n
 type Section = 'members' | 'invites' | 'requests' | 'slots';
 
 export function AdminScreen({ me }: { me: SessionUser }) {
-  const { t, lang, weekdayShort, explain } = useI18n();
+  const { t, lang, weekdayShort, status, explain } = useI18n();
   const [section, setSection] = useState<Section>('members');
   const [users, setUsers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -24,6 +36,8 @@ export function AdminScreen({ me }: { me: SessionUser }) {
   const [startTime, setStartTime] = useState('19:00');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [openMenu, setOpenMenu] = useState('');
+  const [bookings, setBookings] = useState<{ name: string; rows: ChargedBooking[] } | null>(null);
+  const [bookPage, setBookPage] = useState(0);
 
   function load() {
     Promise.all([
@@ -102,12 +116,24 @@ export function AdminScreen({ me }: { me: SessionUser }) {
                       <td>{user.active ? t('activeState') : t('pausedState')}</td>
                       <td>{user.hasGymCredentials ? t('credentialsSaved') : t('noCredentials')}</td>
                       <td>
-                        {user.id !== me.id && (
-                          <RowMenu
-                            label={t('actions')}
-                            open={openMenu === user.id}
-                            onToggle={() => setOpenMenu(openMenu === user.id ? '' : user.id)}
+                        <RowMenu
+                          label={t('actions')}
+                          open={openMenu === user.id}
+                          onToggle={() => setOpenMenu(openMenu === user.id ? '' : user.id)}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenu('');
+                              setBookPage(0);
+                              api<{ displayName: string; reservations: ChargedBooking[] }>(`/api/admin/users/${user.id}/bookings`)
+                                .then((body) => setBookings({ name: body.displayName, rows: body.reservations }))
+                                .catch((reason: unknown) => setError(text(reason, explain)));
+                            }}
                           >
+                            {t('bookings')}
+                          </button>
+                          {user.id !== me.id && (
                             <button
                               type="button"
                               onClick={() => {
@@ -119,6 +145,8 @@ export function AdminScreen({ me }: { me: SessionUser }) {
                             >
                               {user.active ? t('deactivate') : t('activate')}
                             </button>
+                          )}
+                          {user.id !== me.id && (
                             <button
                               type="button"
                               onClick={() => {
@@ -130,8 +158,8 @@ export function AdminScreen({ me }: { me: SessionUser }) {
                             >
                               {t('remove')}
                             </button>
-                          </RowMenu>
-                        )}
+                          )}
+                        </RowMenu>
                       </td>
                     </tr>
                   ))}
@@ -301,6 +329,40 @@ export function AdminScreen({ me }: { me: SessionUser }) {
           )}
         </div>
       </div>
+      {bookings && (
+        <div className="modal-back" onClick={() => setBookings(null)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={bookings.name} onClick={(event) => event.stopPropagation()}>
+            <Title title={bookings.name} help={t('helpBookings')} />
+            {bookings.rows.length === 0 && <p className="empty">{t('nothingCharged')}</p>}
+            {bookings.rows.length > 0 && (
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t('when')}</th>
+                    <th>{t('court')}</th>
+                    <th>{t('players')}</th>
+                    <th>{t('status')}</th>
+                    <th>{t('duration')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookings.rows.slice(bookPage * PAGE_SIZE, bookPage * PAGE_SIZE + PAGE_SIZE).map((reservation) => (
+                    <tr key={reservation.id}>
+                      <td>{clock(reservation.startsAt, lang)}</td>
+                      <td>{courtNumber(reservation.courtIndex)}</td>
+                      <td>{reservation.players.join(', ')}</td>
+                      <td>{status(reservation.status)}</td>
+                      <td>{hours(reservation.durationMinutes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <Pager page={bookPage} pages={Math.ceil(bookings.rows.length / PAGE_SIZE)} onPage={setBookPage} />
+            <button className="ghost" type="button" onClick={() => setBookings(null)}>{t('close')}</button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -489,6 +551,15 @@ function CogIcon() {
       <path fill="currentColor" d="M19.4 13.5a7.7 7.7 0 0 0 .1-1.5 7.7 7.7 0 0 0-.1-1.5l2-1.6a.5.5 0 0 0 .1-.6l-1.9-3.3a.5.5 0 0 0-.6-.2l-2.4 1a7.4 7.4 0 0 0-2.6-1.5l-.4-2.5a.5.5 0 0 0-.5-.4h-3.8a.5.5 0 0 0-.5.4l-.4 2.5a7.4 7.4 0 0 0-2.6 1.5l-2.4-1a.5.5 0 0 0-.6.2L.6 8.3a.5.5 0 0 0 .1.6l2 1.6a7.7 7.7 0 0 0-.1 1.5 7.7 7.7 0 0 0 .1 1.5l-2 1.6a.5.5 0 0 0-.1.6l1.9 3.3a.5.5 0 0 0 .6.2l2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5a.5.5 0 0 0 .5.4h3.8a.5.5 0 0 0 .5-.4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1a.5.5 0 0 0 .6-.2l1.9-3.3a.5.5 0 0 0-.1-.6l-2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
     </svg>
   );
+}
+
+function clock(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(lang === 'es' ? 'es-ES' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }).format(new Date(iso));
+}
+
+function hours(minutes: number): string {
+  const absolute = Math.abs(minutes);
+  return `${Math.floor(absolute / 60)} h ${String(absolute % 60).padStart(2, '0')} min`;
 }
 
 function weekdayName(isoWeekday: number, lang: Lang): string {
