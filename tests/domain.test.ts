@@ -12,6 +12,7 @@ import {
   partyDivisor,
   windowDates,
   pickAccount,
+  planParties,
   placeMember,
   redactInviteUrl,
   redactSecrets,
@@ -93,13 +94,14 @@ describe('shouldCancel', () => {
   const zone = 'Europe/Madrid';
 
   it('cancels a single player from 23:55 the evening before, and keeps two players in any boxes', () => {
-    const one = { occupants: 1, effective: false, startsAt, zone, penaltyGuardMinutes: 20 };
+    const one = { occupants: 1, effective: false, autoCancel: true, startsAt, zone, penaltyGuardMinutes: 20 };
     expect(shouldCancel({ ...one, now: new Date('2026-10-23T21:54:00.000Z') })).toBe(false);
     expect(shouldCancel({ ...one, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(true);
     expect(shouldCancel({ ...one, now: new Date('2026-10-24T14:30:00.000Z') })).toBe(true);
     expect(shouldCancel({ ...one, occupants: 2, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
     expect(shouldCancel({ ...one, effective: true, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
     expect(shouldCancel({ ...one, now: new Date('2026-10-24T16:50:00.000Z') })).toBe(false);
+    expect(shouldCancel({ ...one, autoCancel: false, now: new Date('2026-10-23T21:55:00.000Z') })).toBe(false);
   });
 });
 
@@ -207,7 +209,7 @@ describe('balances and seats', () => {
     expect(leave).toEqual({ ok: false, error: 'last_member' });
   });
 
-  it('puts opted-in players on the courts that will be booked', () => {
+  it('leaves unbooked courts empty when players have only opted in', () => {
     const courts = buildCourts({ maxCourts: 4, courtsTargeted: null, reservations: [] });
     const assigned = assignOptedIn({
       courts,
@@ -217,9 +219,19 @@ describe('balances and seats', () => {
         { id: 'b', displayName: 'Bea', partySize: 3 },
       ],
     });
-    expect(assigned[0]?.occupants.map((occupant) => occupant.displayName)).toEqual(['Ana', 'Bea']);
-    expect(assigned[0]?.occupants.map((occupant) => occupant.position)).toEqual(['front_left', 'front_right']);
-    expect(assigned[1]?.occupants).toEqual([]);
+    expect(assigned.every((court) => court.occupants.length === 0)).toBe(true);
+  });
+
+  it('drops player marks from a cancelled court and keeps them on a held or played court', () => {
+    const occupants = [{ id: 's', position: 'front_left' as const, userId: 'a', guestName: null, displayName: 'Ana' }];
+    const views = (status: 'held' | 'cancelled' | 'played') => buildCourts({
+      maxCourts: 4,
+      courtsTargeted: 1,
+      reservations: [{ id: 'r', courtIndex: 0, status, startsAt: new Date('2026-10-24T17:00:00.000Z'), occupants }],
+    });
+    expect(views('cancelled')[0]?.occupants).toEqual([]);
+    expect(views('held')[0]?.occupants).toEqual(occupants);
+    expect(views('played')[0]?.occupants).toEqual(occupants);
   });
 
   it('marks unbooked courts open before the freeze and skipped after it', () => {
@@ -282,6 +294,79 @@ describe('windowDates', () => {
     expect(dates[0]).toBe('2026-10-18');
     expect(dates.at(-1)).toBe('2026-10-25');
     expect(dates).not.toContain('2026-10-17');
+  });
+});
+
+function candidate(userId: string, bookedMinutes: number, preferred: { targetUserId: string | null; guestName: string | null; position: number }[] = [], partySize: 2 | 3 = 3) {
+  return {
+    userId,
+    optedInAt: new Date(userId.charCodeAt(0) * 1000),
+    bookedMinutes,
+    playedMinutes: 0,
+    partySize,
+    hasCredentials: true,
+    preferred,
+  };
+}
+
+describe('planParties', () => {
+  it('keeps unlinked players on separate courts and caps the list at four', () => {
+    const five = ['a', 'b', 'c', 'd', 'e'].map((id, index) => candidate(id, index * 60));
+    expect(planParties(five, 4).map((party) => party.hostUserId)).toEqual(['a', 'b', 'c', 'd']);
+    const six = [...five, candidate('f', 300)];
+    expect(planParties(six, 4)).toHaveLength(4);
+  });
+
+  it('seats a saved partner with the host and does not give that partner a second court', () => {
+    const parties = planParties([
+      candidate('host', 120, [{ targetUserId: 'mate', guestName: null, position: 0 }]),
+      candidate('mate', 0),
+    ], 4);
+    expect(parties).toEqual([
+      { hostUserId: 'host', memberIds: ['host', 'mate'], guestNames: [], partySize: 3 },
+    ]);
+  });
+
+  it('lets the lighter member host when each has saved the other', () => {
+    const parties = planParties([
+      candidate('heavy', 180, [{ targetUserId: 'light', guestName: null, position: 0 }]),
+      candidate('light', 0, [{ targetUserId: 'heavy', guestName: null, position: 0 }]),
+    ], 4);
+    expect(parties.map((party) => party.hostUserId)).toEqual(['light']);
+    expect(parties[0]?.memberIds).toEqual(['light', 'heavy']);
+  });
+
+  it('gives a shared partner to the lighter host, then the earlier opt-in', () => {
+    const early = { ...candidate('early', 60, [{ targetUserId: 'mate', guestName: null, position: 0 }]), optedInAt: new Date(1) };
+    const late = { ...candidate('late', 60, [{ targetUserId: 'mate', guestName: null, position: 0 }]), optedInAt: new Date(2) };
+    const parties = planParties([early, late, candidate('mate', 0)], 4);
+    const home = parties.find((party) => party.memberIds.includes('mate'));
+    expect(home?.hostUserId).toBe('early');
+    expect(parties.some((party) => party.hostUserId === 'mate')).toBe(false);
+  });
+
+  it('fills only two spots for a pair and keeps a guest name off the host list', () => {
+    const parties = planParties([
+      candidate('host', 0, [
+        { targetUserId: 'mate', guestName: null, position: 0 },
+        { targetUserId: null, guestName: 'Luis', position: 1 },
+      ], 2),
+      candidate('mate', 30),
+      { ...candidate('visitor', 0), hasCredentials: false },
+    ], 4);
+    expect(parties).toEqual([
+      { hostUserId: 'host', memberIds: ['host', 'mate'], guestNames: [], partySize: 2 },
+    ]);
+  });
+
+  it('adds a guest name and skips a player without credentials', () => {
+    const parties = planParties([
+      candidate('host', 0, [{ targetUserId: null, guestName: 'Luis', position: 0 }]),
+      { ...candidate('visitor', 0), hasCredentials: false },
+    ], 4);
+    expect(parties).toEqual([
+      { hostUserId: 'host', memberIds: ['host'], guestNames: ['Luis'], partySize: 3 },
+    ]);
   });
 });
 

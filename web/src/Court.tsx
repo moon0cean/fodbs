@@ -16,6 +16,7 @@ export function CourtCard({
   times,
   meId,
   canBook,
+  members,
   onChange,
   onError,
 }: {
@@ -23,6 +24,7 @@ export function CourtCard({
   times: CourtTime[];
   meId: string;
   canBook: boolean;
+  members: { id: string; displayName: string }[];
   onChange: () => void;
   onError: (value: string) => void;
 }) {
@@ -50,7 +52,7 @@ export function CourtCard({
           </div>
         )}
       </div>
-      <SquashCourt court={court} meId={meId} canBook={canBook} onChange={onChange} onError={onError} />
+      <SquashCourt court={court} meId={meId} canBook={canBook} members={members} onChange={onChange} onError={onError} />
     </article>
   );
 }
@@ -59,24 +61,42 @@ function SquashCourt({
   court,
   meId,
   canBook,
+  members,
   onChange,
   onError,
 }: {
   court: Court;
   meId: string;
   canBook: boolean;
+  members: { id: string; displayName: string }[];
   onChange: () => void;
   onError: (value: string) => void;
 }) {
   const { t, explain } = useI18n();
   const [guestName, setGuestName] = useState('');
+  const [memberId, setMemberId] = useState('');
+  const [spot, setSpot] = useState<Spot | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [notice, setNotice] = useState('');
   const joinable = court.status === 'held' && court.reservationId;
   const mine = court.occupants.some((occupant) => occupant.userId === meId);
-  const nextEmpty = SPOTS.find((spot) => !court.occupants.some((occupant) => occupant.position === spot));
 
   function occupant(spot: Spot): Occupant | undefined {
     return court.occupants.find((item) => item.position === spot);
+  }
+
+  function fill(body: { position: Spot; kind: 'self' } | { position: Spot; kind: 'member'; userId: string } | { position: Spot; kind: 'guest'; name: string }) {
+    if (!court.reservationId) return;
+    void api<{ requested?: boolean }>(`/api/reservations/${court.reservationId}/occupants`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((result) => {
+      setNotice(result?.requested ? t('requestSentCourt') : '');
+      setSpot(null);
+      setGuestName('');
+      setMemberId('');
+      onChange();
+    }).catch((reason: unknown) => onError(text(reason, explain)));
   }
 
   function sit(spot: Spot) {
@@ -118,10 +138,23 @@ function SquashCourt({
 
   function cancelCourt() {
     if (!court.reservationId) return;
-    if (!window.confirm(t('cancelCourtConfirm'))) return;
     void api(`/api/reservations/${court.reservationId}/cancel`, { method: 'POST' })
-      .then(onChange)
+      .then(() => {
+        setLeaving(false);
+        onChange();
+      })
       .catch((reason: unknown) => onError(text(reason, explain)));
+  }
+
+  function transferCourt(userId: string) {
+    if (!court.reservationId) return;
+    void api(`/api/reservations/${court.reservationId}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }).then(() => {
+      setLeaving(false);
+      onChange();
+    }).catch((reason: unknown) => onError(text(reason, explain)));
   }
 
   return (
@@ -151,9 +184,8 @@ function SquashCourt({
                 className={`bubble ${person ? 'filled' : ''} ${isGuest ? 'guest' : ''} ${holder ? 'holder' : ''}`}
                 disabled={blocked && !own}
                 onClick={() => {
-                  if (!joinable || isGuest) return;
-                  if (own && court.ownerId === meId) return;
-                  sit(spot);
+                  if (!joinable || isGuest || person) return;
+                  setSpot(spot);
                 }}
               >
                 <strong>{person ? initials(person.displayName || t('guest')) : '+'}</strong>
@@ -166,7 +198,7 @@ function SquashCourt({
                   aria-label={`${t('removeGuest')} ${label}`}
                   onClick={() => {
                     if (isGuest) removeGuest(person.id);
-                    else if (own && court.ownerId === meId) cancelCourt();
+                    else if (own && court.ownerId === meId) setLeaving(true);
                     else if (own) sit(spot);
                     else removePlayer(person.id);
                   }}
@@ -191,26 +223,40 @@ function SquashCourt({
           )}
         </div>
       ))}
-      {joinable && mine && nextEmpty && (
-        <form
-          className="guest-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!court.reservationId || !nextEmpty) return;
-            void api(`/api/reservations/${court.reservationId}/guests`, {
-              method: 'POST',
-              body: JSON.stringify({ name: guestName, position: nextEmpty }),
-            }).then(() => {
-              setGuestName('');
-              onChange();
-            }).catch((reason: unknown) => onError(text(reason, explain)));
-          }}
-        >
-          <label>{t('guest')}
-            <input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={40} placeholder={t('guestName')} />
-          </label>
-          <button className="ghost" type="submit">{t('addGuest')}</button>
-        </form>
+      {leaving && (
+        <div className="modal-back" onClick={() => setLeaving(false)}>
+          <div className="modal" role="dialog" aria-label={t('leaveCourt')} onClick={(event) => event.stopPropagation()}>
+            <h2>{t('leaveCourt')}</h2>
+            <p className="hint">{court.occupants.some((person) => person.userId && person.userId !== meId) ? t('leaveCourtChoice') : t('cancelCourtConfirm')}</p>
+            {court.occupants.filter((person) => person.userId && person.userId !== meId).map((person) => (
+              <button key={person.id} className="solid" type="button" onClick={() => transferCourt(person.userId ?? '')}>{t('transferTo')} {person.displayName}</button>
+            ))}
+            <button className="ghost" type="button" onClick={cancelCourt}>{t('cancelCourt')}</button>
+            <button className="ghost" type="button" onClick={() => setLeaving(false)}>{t('close')}</button>
+          </div>
+        </div>
+      )}
+      {spot && (
+        <div className="modal-back" onClick={() => setSpot(null)}>
+          <div className="modal" role="dialog" aria-label={t('addToSpot')} onClick={(event) => event.stopPropagation()}>
+            <h2>{t('addToSpot')}</h2>
+            {!mine && <button className="solid" type="button" onClick={() => fill({ position: spot, kind: 'self' })}>{t('sitHere')}</button>}
+            <label>{t('addMember')}
+              <select value={memberId} onChange={(event) => setMemberId(event.target.value)}>
+                <option value="">{t('addMember')}</option>
+                {members.filter((member) => member.id !== meId && !court.occupants.some((occupant) => occupant.userId === member.id)).map((member) => (
+                  <option key={member.id} value={member.id}>{member.displayName}</option>
+                ))}
+              </select>
+            </label>
+            <button className="ghost" type="button" disabled={!memberId} onClick={() => fill({ position: spot, kind: 'member', userId: memberId })}>{t('addMember')}</button>
+            <label>{t('guest')}
+              <input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={40} placeholder={t('guestName')} />
+            </label>
+            <button className="ghost" type="button" onClick={() => fill({ position: spot, kind: 'guest', name: guestName })}>{t('addGuest')}</button>
+            <button className="ghost" type="button" onClick={() => setSpot(null)}>{t('close')}</button>
+          </div>
+        </div>
       )}
     </div>
   );

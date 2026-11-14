@@ -3,6 +3,9 @@ dist
 web/dist
 .git
 .env
+.env*
+*.log
+coverage/
 tests
 specs
 .specify

@@ -1,9 +1,15 @@
 node_modules
 dist
+build/
 web/dist
 .env
+.env*
 .idea
+.vscode/
+.DS_Store
 *.log
+*.tmp
+*.swp
 test-results
 playwright-report
 .specify/feature.json

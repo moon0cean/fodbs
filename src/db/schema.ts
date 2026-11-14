@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   displayName: text('display_name').notNull(),
   role: text('role').notNull(),
   active: boolean('active').notNull().default(true),
+  autoCancel: boolean('auto_cancel').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
 });
 

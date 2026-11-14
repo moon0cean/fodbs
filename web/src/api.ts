@@ -84,6 +84,7 @@ export type Dashboard = {
     optedIn: { id: string; displayName: string }[];
     myOptIn: boolean;
     checks: { courtIndex: number; free: boolean }[];
+    unplaced: { id: string; displayName: string }[];
     courts: Court[];
   }[];
 };
@@ -96,6 +97,7 @@ export type Account = {
   bonsRemaining: number | null;
   bonsCheckedAt: string | null;
   syncedAt: string | null;
+  autoCancel: boolean;
   preferences: { weekdays: number[]; preferredTime: string; partySize: 2 | 3 } | null;
   companions: { id: string; displayName: string }[];
   preferred: PreferredPlayer[];

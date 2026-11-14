@@ -26,16 +26,36 @@ function primedStore(): MemoryStore {
 }
 
 describe('scheduler', () => {
-  it('books two courts on the lightest accounts and does not book them again', async () => {
-    const store = primedStore();
+  it('books four courts for five unlinked members and does not book them again', async () => {
+    const store = new MemoryStore(60_000);
+    store.occurrences.set('occ', { id: 'occ', startsAt: START, durationMinutes: 60, clubCode: 'ROC', courtsTargeted: null });
+    for (const [index, userId] of ['a', 'b', 'c', 'd', 'e'].entries()) {
+      store.creds.set(userId, { username: `nif-${userId}`, password: `pass-${userId}` });
+      store.base.push({ userId, bookedMinutes: index * 60, playedMinutes: 0, bookingsOnDay: 0, simultaneousHeld: 0 });
+    }
+    store.optedIn.set('occ', ['a', 'b', 'c', 'd', 'e']);
     const gateway = new FakeGymGateway();
     const sessions = new SessionPool(gateway);
-    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig({ dirMaxPerDay: 1 }), log: () => undefined });
-    expect(gateway.bookings.map((booking) => booking.username)).toEqual(['nif-b', 'nif-a']);
-    expect(store.reservations.map((reservation) => reservation.occupants)).toEqual([1, 1]);
-    expect(store.occurrences.get('occ')?.courtsTargeted).toBe(2);
-    await runSchedulerTick({ now: new Date(OPEN.getTime() + 1000), store, gateway, sessions, config: testConfig({ dirMaxPerDay: 1 }), log: () => undefined });
-    expect(gateway.bookings).toHaveLength(2);
+    const config = testConfig({ dirMaxSimultaneous: 4 });
+    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config, log: () => undefined });
+    expect(gateway.bookings.map((booking) => booking.username)).toEqual(['nif-a', 'nif-b', 'nif-c', 'nif-d']);
+    expect(store.reservations.flatMap((reservation) => reservation.occupantUserIds)).not.toContain('e');
+    expect(store.occurrences.get('occ')?.courtsTargeted).toBe(4);
+    await runSchedulerTick({ now: new Date(OPEN.getTime() + 1000), store, gateway, sessions, config, log: () => undefined });
+    expect(gateway.bookings).toHaveLength(4);
+    await sessions.closeAll();
+  });
+
+  it('books one court for a host and the partner they saved', async () => {
+    const store = primedStore();
+    store.optedIn.set('occ', ['a', 'b']);
+    store.preferred.set('a', [{ targetUserId: 'b', guestName: null, position: 0 }]);
+    const gateway = new FakeGymGateway();
+    const sessions = new SessionPool(gateway);
+    await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig(), log: () => undefined });
+    expect(gateway.bookings).toEqual([expect.objectContaining({ username: 'nif-a' })]);
+    expect(store.reservations[0]?.occupantUserIds).toEqual(['a', 'b']);
+    expect(store.occurrences.get('occ')?.courtsTargeted).toBe(1);
     await sessions.closeAll();
   });
 
@@ -57,18 +77,22 @@ describe('scheduler', () => {
 
   it('books the same court on the next account when the lightest has no bons', async () => {
     const store = primedStore();
-    store.optedIn.set('occ', ['p1']);
+    store.optedIn.set('occ', ['a', 'b']);
+    store.preferred.set('b', [{ targetUserId: 'a', guestName: null, position: 0 }]);
+    store.creds.set('c', { username: 'nif-c', password: 'pass-c' });
+    store.base.push({ userId: 'c', bookedMinutes: 0, playedMinutes: 600, bookingsOnDay: 0, simultaneousHeld: 0 });
     const gateway = new FakeGymGateway();
     gateway.noBons.add('nif-b');
     const sessions = new SessionPool(gateway);
     await runSchedulerTick({ now: OPEN, store, gateway, sessions, config: testConfig(), log: () => undefined });
     expect(gateway.bookings).toEqual([expect.objectContaining({ username: 'nif-a', courtIndex: 0 })]);
+    expect(store.reservations[0]?.occupantUserIds).toEqual(['a', 'b']);
     await sessions.closeAll();
   });
 
   it('skips an account that is already at the daily cap', async () => {
     const store = primedStore();
-    store.optedIn.set('occ', ['p1']);
+    store.optedIn.set('occ', ['a', 'b']);
     store.base[0]!.bookingsOnDay = 2;
     store.base[1]!.bookingsOnDay = 2;
     const gateway = new FakeGymGateway();
@@ -85,7 +109,7 @@ describe('scheduler', () => {
 
   it('retries a portal failure only after the backoff', async () => {
     const store = primedStore();
-    store.optedIn.set('occ', ['p1']);
+    store.optedIn.set('occ', ['b']);
     const gateway = new FakeGymGateway();
     gateway.failBooks = true;
     const sessions = new SessionPool(gateway);
@@ -102,8 +126,8 @@ describe('scheduler', () => {
 
   it('books thirty minutes later on another court when the planned time is taken', async () => {
     const store = primedStore();
-    store.optedIn.set('occ', ['p1']);
-    store.emails.set('p1', 'p1@example.com');
+    store.optedIn.set('occ', ['b']);
+    store.emails.set('b', 'b@example.com');
     const gateway = new FakeGymGateway();
     const later = new Date(START.getTime() + 30 * 60_000);
     const earlier = new Date(START.getTime() - 30 * 60_000);
@@ -135,8 +159,8 @@ describe('scheduler', () => {
 
   it('emails once and stores no reservation when every nearby court is taken', async () => {
     const store = primedStore();
-    store.optedIn.set('occ', ['p1']);
-    store.emails.set('p1', 'p1@example.com');
+    store.optedIn.set('occ', ['b']);
+    store.emails.set('b', 'b@example.com');
     const gateway = new FakeGymGateway();
     for (const offset of [0, -30, 30]) {
       const startsAt = new Date(START.getTime() + offset * 60_000);
@@ -159,7 +183,7 @@ describe('scheduler', () => {
     await tick(new Date(OPEN.getTime() + 61_000));
     expect(gateway.bookings).toHaveLength(0);
     expect(store.reservations).toHaveLength(0);
-    expect(notices).toEqual([['p1@example.com']]);
+    expect(notices).toEqual([['b@example.com']]);
     await sessions.closeAll();
   });
 
@@ -183,7 +207,9 @@ describe('scheduler', () => {
       startsAt: START,
       durationMinutes: 60,
       occupants: 2,
+      occupantUserIds: ['a'],
       effective: true,
+      autoCancel: false,
     });
     const gateway = new FakeGymGateway();
     await runSchedulerTick({
@@ -217,12 +243,24 @@ describe('scheduler', () => {
       status: 'held',
       startsAt,
       durationMinutes: 60,
-      occupants: 0,
+      occupants: 1,
+      occupantUserIds: ['a'],
       effective: false,
+      autoCancel: false,
     });
     const gateway = new FakeGymGateway();
     gateway.bookings.push({ externalRef: 'fake-0', username: 'nif-a', courtIndex: 0, startsAt: startsAt.toISOString() });
     const sessions = new SessionPool(gateway);
+    await runSchedulerTick({
+      now: new Date('2026-10-23T21:55:00.000Z'),
+      store,
+      gateway,
+      sessions,
+      config: testConfig(),
+      log: () => undefined,
+    });
+    expect(store.reservations[0]?.status).toBe('held');
+    store.reservations[0]!.autoCancel = true;
     await runSchedulerTick({
       now: new Date('2026-10-24T16:50:00.000Z'),
       store,
@@ -258,7 +296,7 @@ describe('scheduler', () => {
       availabilityCheckedAt: null,
     };
     store.occurrences.set('occ', { id: 'occ', startsAt: START, durationMinutes: 60, clubCode: 'ROC', courtsTargeted: 1 });
-    store.optedIn.set('occ', ['p1']);
+    store.optedIn.set('occ', ['b']);
     const gateway = new FakeGymGateway();
     for (let courtIndex = 0; courtIndex < 4; courtIndex += 1) {
       gateway.unavailable.add(`${courtIndex}|${START.toISOString()}`);

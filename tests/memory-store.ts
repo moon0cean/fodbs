@@ -1,5 +1,5 @@
 import type { SchedulerConfig, SchedulerStore, UpcomingOccurrence } from '../src/scheduler.js';
-import { madridDate, type AccountCandidate } from '../src/domain.js';
+import { madridDate, planParties, type AccountCandidate, type PartyPreferred, type PlayParty } from '../src/domain.js';
 
 export type MemoryReservation = {
   id: string;
@@ -11,13 +11,19 @@ export type MemoryReservation = {
   startsAt: Date;
   durationMinutes: number;
   occupants: number;
+  occupantUserIds: string[];
   effective: boolean;
+  autoCancel: boolean;
 };
 
 export class MemoryStore implements SchedulerStore {
   readonly occurrences = new Map<string, UpcomingOccurrence>();
   readonly optedIn = new Map<string, string[]>();
   readonly partySizes = new Map<string, 2 | 3>();
+  readonly optedInAt = new Map<string, Date>();
+  readonly preferred = new Map<string, PartyPreferred[]>();
+  readonly bookedMinutes = new Map<string, number>();
+  readonly playedMinutes = new Map<string, number>();
   readonly base: AccountCandidate[] = [];
   readonly creds = new Map<string, { username: string; password: string }>();
   readonly emails = new Map<string, string>();
@@ -44,6 +50,31 @@ export class MemoryStore implements SchedulerStore {
       userId,
       partySize: this.partySizes.get(userId) ?? 3,
     }));
+  }
+
+  async playParties(occurrenceId: string, now: Date, maxCourts: number): Promise<PlayParty[]> {
+    const ids = this.optedIn.get(occurrenceId) ?? [];
+    const candidates = ids.map((userId) => {
+      const base = this.base.find((user) => user.userId === userId);
+      const added = this.reservations.filter((reservation) => reservation.chargedUserId === userId && reservation.status !== 'cancelled');
+      return {
+        userId,
+        optedInAt: this.optedInAt.get(`${occurrenceId}:${userId}`) ?? new Date(0),
+        bookedMinutes: (base?.bookedMinutes ?? this.bookedMinutes.get(userId) ?? 0) + added.reduce((sum, reservation) => sum + reservation.durationMinutes, 0),
+        playedMinutes: base?.playedMinutes ?? this.playedMinutes.get(userId) ?? 0,
+        partySize: this.partySizes.get(userId) ?? 3,
+        hasCredentials: this.creds.has(userId),
+        preferred: this.preferred.get(userId) ?? [],
+      };
+    });
+    void now;
+    return planParties(candidates, maxCourts);
+  }
+
+  async seatedMemberIds(occurrenceId: string): Promise<Set<string>> {
+    return new Set(this.reservations
+      .filter((reservation) => reservation.occurrenceId === occurrenceId && reservation.status === 'held')
+      .flatMap((reservation) => reservation.occupantUserIds));
   }
 
   async candidates(startsAt: Date, now: Date): Promise<AccountCandidate[]> {
@@ -127,8 +158,13 @@ export class MemoryStore implements SchedulerStore {
     externalRef: string;
     startsAt: Date;
     now: Date;
+    party: PlayParty;
   }): Promise<void> {
     const occurrence = this.occurrences.get(input.occurrenceId);
+    const spots = input.party.partySize === 2 ? 2 : 3;
+    const members = [input.chargedUserId, ...input.party.memberIds.filter((id) => id !== input.chargedUserId)];
+    const occupantUserIds = members.slice(0, spots);
+    const guestCount = Math.max(0, Math.min(input.party.guestNames.length, spots - occupantUserIds.length));
     this.reservations.push({
       id: `res-${this.seq++}`,
       occurrenceId: input.occurrenceId,
@@ -138,8 +174,10 @@ export class MemoryStore implements SchedulerStore {
       status: 'held',
       startsAt: input.startsAt,
       durationMinutes: occurrence?.durationMinutes ?? 60,
-      occupants: 1,
+      occupants: occupantUserIds.length + guestCount,
+      occupantUserIds,
       effective: false,
+      autoCancel: false,
     });
   }
 
@@ -153,6 +191,7 @@ export class MemoryStore implements SchedulerStore {
         startsAt: reservation.startsAt,
         occupants: reservation.occupants,
         effective: reservation.effective,
+        autoCancel: reservation.autoCancel,
       }));
   }
 

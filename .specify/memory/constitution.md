@@ -30,15 +30,20 @@ session cookies, or invite tokens. Decryption happens in the worker at the
 moment of a portal call, and on the account page only so the owner can see
 their own identifier.
 
-### IV. Book the Opening, Then Give Courts Back
+### IV. Book One Court per Party, Then Give It Back When Asked
 
 The worker submits court bookings at the instant the gym horizon opens, using
-sessions prepared shortly before that instant. It books only as many courts as
-opted-in players need, and it chooses the member account with the lightest
-booking burden that still has gym quota. A held court whose two front squares
-are not both filled at the start of the slot's local day MUST be cancelled
-before the gym's penalty window. The back spot is optional. A missed cancel
-MUST NOT be sent inside that penalty window.
+sessions prepared shortly before that instant. It books one court per play
+party, capped at four, and does not seat members together unless one has
+chosen the other. A party is the host plus the partners and guest names that
+host saved. The club account charged for that court belongs to someone in the
+party. The host's account is tried first, then another party member who can
+pay. A held court is cancelled for having fewer than two occupants only when
+the member charged for it has turned automatic cancellation on. That choice is
+off until they turn it on. When it is on, the cancel runs from 23:55 Madrid
+the evening before the slot until the penalty guard. Two occupants in any
+boxes keep the court. A missed cancel MUST NOT be sent inside that penalty
+window. The charged member can still cancel by hand.
 
 ### V. One App Beside Family-net
 
@@ -89,4 +94,4 @@ requires an amendment here and a spec update in the same change. Complexity
 beyond one server, one worker, and one database must be justified in the
 feature plan.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-17
+**Version**: 1.1.0 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-11-14

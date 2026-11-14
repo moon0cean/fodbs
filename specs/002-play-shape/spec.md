@@ -38,18 +38,19 @@ A held court is drawn as a squash court. Two bubbles sit in the front service bo
 4. **Given** guests on the court, **When** the last invited member tries to leave, **Then** the leave is rejected.
 5. **Given** a court with guests, **When** balances are computed, **Then** the host is booked for the full duration and each invited member who occupies a bubble is played for that duration.
 
-### User Story 3 - Cancel unless two players remain (Priority: P1)
+### User Story 3 - Cancel a short court only when the charged member asked (Priority: P1)
 
-From 23:55 Madrid the evening before the slot, two saved occupants must be on the court, in any boxes. A member or a guest counts. Otherwise the reservation is cancelled, as long as that instant is still outside the penalty guard. Once two occupants are on the court at or after that deadline, the booking is effective.
+Automatic cancellation is the charged member's choice and starts off, as specified in `006-court-parties`. When it is on, two saved occupants must be on the court from 23:55 Madrid the evening before, in any boxes. A member or a guest counts. Otherwise the reservation is cancelled, as long as that instant is still outside the penalty guard. Once two occupants are on the court at or after that deadline, the booking is effective.
 
-**Independent Test**: With one player, a tick before 23:55 the evening before does not cancel, a tick at 23:55 and outside the penalty guard does, and a court with two players in any boxes does not.
+**Independent Test**: With the preference off, a one-player court stays after 23:55. With it on, a tick before 23:55 does not cancel, a tick at 23:55 and outside the penalty guard does, and a court with two players in any boxes does not.
 
 **Acceptance Scenarios**:
 
 1. **Given** a held court with one player and the clock before 23:55 Madrid the evening before, **When** the worker ticks, **Then** the court stays held.
-2. **Given** the same court at 23:55 that evening and before the penalty guard, **When** the worker ticks, **Then** the gateway cancel runs and the reservation is cancelled.
-3. **Given** two players, one in a front box and one in the back, **When** the deadline has passed, **Then** the court is not cancelled.
-4. **Given** the clock inside the penalty guard, **When** fewer than two players remain, **Then** the worker does not call cancel.
+2. **Given** the preference is on and the same court is at 23:55 that evening and before the penalty guard, **When** the worker ticks, **Then** the gateway cancel runs and the reservation is cancelled.
+3. **Given** the preference is off and the same court is at 23:55, **When** the worker ticks, **Then** the court stays held.
+4. **Given** two players, one in a front box and one in the back, **When** the deadline has passed, **Then** the court is not cancelled.
+5. **Given** the clock inside the penalty guard, **When** fewer than two players remain, **Then** the worker does not call cancel.
 
 ### User Story 4 - Spanish and a phone layout (Priority: P2)
 
@@ -62,15 +63,15 @@ The interface is Spanish unless the member switches to English. The choice is re
 ### Functional Requirements
 
 - **FR-101**: A member MUST be able to save weekdays (ISO 1–7), a preferred `HH:mm`, and a party size of 2 or 3.
-- **FR-102**: An occurrence whose Madrid weekday and time match a member's preference MUST count that member in, unless they have opted out. Once a court is actually booked, opt-in MUST seat that player in opt-in order when that player has linked DiR credentials. A court with no reservation MUST NOT be shown as booked.
+- **FR-102**: An occurrence whose Madrid weekday and time match a member's preference MUST count that member in, unless they have opted out. Opt-in MUST NOT seat that member on a court with people they were not chosen to play with. Seating follows the play parties in `006-court-parties`. A court with no reservation MUST NOT be shown as booked.
 - **FR-112**: A member without linked DiR credentials MUST NOT take a seat directly and MUST NOT be seated by opt-in. They can request one empty spot on a held court. The member whose DiR account is charged for that court receives an email and approves or rejects the request in FODBS. Approval places the requester on that spot. Rejection does not.
-- **FR-103**: Court count MUST use a divisor of 2 when more opted-in members prefer 2 than 3, and 3 otherwise, still capped at 4 courts.
+- **FR-103**: Court count MUST be one court per play party, capped at 4. A host's party size of 2 or 3 limits the spots on that host's court. It MUST NOT pool every opted-in member into shared courts.
 - **FR-104**: A held court MUST be drawn as a singles squash floor: front wall at the top, the short line across the court, the half-court line from the middle of the short line to the back wall, and a 1.6 m service box on each side wall sitting on the short line. Positions are `front_left` and `front_right` inside those boxes, and `back` behind them toward the back wall. The two boxes are mandatory. `back` is optional.
 - **FR-105**: A member MUST be able to take an empty position and MUST leave any other court of that occurrence.
 - **FR-106**: An invited member who occupies the court MUST be able to add one guest to an empty position on that same court. The guest is a name, or no name. No email is collected. A guest MUST NOT be added when no invited member is on the court.
 - **FR-107**: The last invited member on a court that has a guest MUST NOT be able to leave until the guest is removed.
 - **FR-108**: When a court has at least one guest, booked minutes for the full duration MUST be attributed to the invited host who added a guest, not split. Played minutes MUST count only invited members in a bubble.
-- **FR-109**: From 23:55 Madrid the evening before the slot, a held court that is not yet effective and has fewer than two saved occupants MUST be cancelled when the clock is still before the penalty guard. Two occupants in any boxes at that deadline MUST make the booking effective. A guest counts as an occupant. A booked court MUST show only saved occupants, not a player who is only opted in.
+- **FR-109**: Automatic cancellation follows `006-court-parties` and is off unless the charged member turned it on. When it is on, from 23:55 Madrid the evening before the slot, a held court that is not yet effective and has fewer than two saved occupants MUST be cancelled when the clock is still before the penalty guard. Two occupants in any boxes at that deadline MUST make the booking effective. A guest counts as an occupant. When the preference is off, the court MUST stay. A booked court MUST show only saved occupants, not a player who is only opted in. A cancelled court MUST show no player marks.
 - **FR-110**: The UI MUST default to Spanish, offer English, and remember the choice. Messages shown for a failed action MUST follow that language. The court cards MUST fill the width of the panel. Their order is Squash 05 top left, 04 top right, 11 bottom left, and 10 bottom right. Below 800px those four courts MUST be a horizontal slider in that same order, one court across the panel, so the member can slide to the next court. Above that they stay side by side. Opting in, or a booking on one court, MUST NOT move or stretch the other card.
 - **FR-111**: A member MUST be able to pause and restore their own account. A paused account can log in, and MUST NOT opt in, take a seat, or be used to book.
 
@@ -85,12 +86,12 @@ The interface is Spanish unless the member switches to English. The choice is re
 
 - **SC-101**: Preference sync and opt-out are stable across a second sync.
 - **SC-102**: A guest cannot exist on a court with no invited member.
-- **SC-103**: One player from 23:55 the evening before cancels; two players in any boxes do not.
+- **SC-103**: With automatic cancellation off, one player from 23:55 the evening before stays. With it on, that court cancels, and two players in any boxes do not.
 - **SC-104**: `npm test` passes without calling DiR.
 
 ## Assumptions
 
 - Preferred time matches an admin slot exactly (`HH:mm` in Europe/Madrid). Other slots still accept a manual opt-in.
-- Party size changes how many courts are grabbed. It does not cancel a court that has two players.
+- Party size limits the spots on that host's court. It does not merge other members onto the court, and it does not cancel a court that has two players.
 - Guest names are display-only. They are not FODBS accounts and have no balance.
 - The gym-account rotation for the scheduler still follows the DiR account that placed the booking.

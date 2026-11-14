@@ -6,6 +6,7 @@ create table if not exists users (
   display_name text not null,
   role text not null check (role in ('admin', 'member')),
   active boolean not null default true,
+  auto_cancel boolean not null default false,
   created_at timestamptz not null
 );
 
@@ -182,4 +183,6 @@ create table if not exists booking_attempts (
   detail text not null default '',
   updated_at timestamptz not null
 );
+
+alter table users add column if not exists auto_cancel boolean not null default false;
 `;

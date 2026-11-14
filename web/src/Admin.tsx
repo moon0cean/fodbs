@@ -411,7 +411,7 @@ function SlotSection({
             {[1, 2, 3, 4, 5, 6, 7].map((day) => <option key={day} value={day}>{weekdayName(day, lang)} ({weekdayShort(day - 1)})</option>)}
           </select>
         </label>
-        <label>{t('start')}<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></label>
+        <label>{t('start')}<input type="time" lang={lang === 'en' ? 'en-GB' : 'es-ES'} value={startTime} onChange={(event) => setStartTime(event.target.value)} required /></label>
         <label>{t('minutes')}<input type="number" min={30} max={180} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} /></label>
         <button className="solid" type="submit">{t('addSlot')}</button>
         </div>

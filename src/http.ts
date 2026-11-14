@@ -159,7 +159,17 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
       bonsRemaining: account.bonsRemaining,
       bonsCheckedAt: account.bonsCheckedAt?.toISOString() ?? null,
       syncedAt: account.syncedAt?.toISOString() ?? null,
+      autoCancel: account.autoCancel,
     };
+  });
+
+  app.put('/api/account/auto-cancel', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(z.object({ enabled: z.boolean() }), request.body);
+    if (!body) return fail(reply, 400, 'invalid_body');
+    await db.saveAutoCancel(user.id, body.enabled);
+    return reply.code(204).send();
   });
 
   app.post('/api/account/sync', async (request, reply) => {
@@ -349,6 +359,38 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     return reply.code(204).send();
   });
 
+  app.post('/api/reservations/:id/occupants', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(z.object({
+      position: z.enum(['front_left', 'front_right', 'back']),
+      kind: z.enum(['self', 'member', 'guest']),
+      userId: z.string().min(1).optional(),
+      name: z.string().max(40).optional(),
+    }), request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    if (body.kind === 'member' && !body.userId) return fail(reply, 400, 'invalid_body');
+    const error = await db.addOccupant(
+      user.id,
+      params.data.id,
+      body.kind === 'member'
+        ? { position: body.position, kind: 'member', userId: body.userId ?? '' }
+        : body.kind === 'guest'
+          ? { position: body.position, kind: 'guest', name: body.name ?? '' }
+          : { position: body.position, kind: 'self' },
+      new Date(),
+    );
+    if (error === 'requested' || error === 'already_requested') {
+      const targetId = body.kind === 'member' ? body.userId ?? user.id : user.id;
+      await notifySeatRequest(mailer, config, db, params.data.id, targetId);
+      return reply.code(202).send({ requested: true });
+    }
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
   app.post('/api/reservations/:id/guests', async (request, reply) => {
     const user = requireUser(request, reply);
     if (!user) return;
@@ -378,6 +420,18 @@ export function registerRoutes(app: FastifyInstance, db: AppDatabase, config: Ap
     const params = z.object({ id: z.string().min(1), seatId: z.string().min(1) }).safeParse(request.params);
     if (!params.success) return fail(reply, 400, 'invalid_body');
     const error = await db.removeHeldPlayer(user.id, params.data.id, params.data.seatId, new Date());
+    if (error === 'missing') return fail(reply, 404, error);
+    if (error) return fail(reply, 400, error);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/reservations/:id/transfer', async (request, reply) => {
+    const user = requireUser(request, reply);
+    if (!user) return;
+    const body = parse(z.object({ userId: z.string().min(1) }), request.body);
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!body || !params.success) return fail(reply, 400, 'invalid_body');
+    const error = await db.transferCourt(user.id, params.data.id, body.userId, new Date());
     if (error === 'missing') return fail(reply, 404, error);
     if (error) return fail(reply, 400, error);
     return reply.code(204).send();

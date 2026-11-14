@@ -114,6 +114,91 @@ export function partyDivisor(partySizes: number[]): number {
   return twos > threes ? 2 : 3;
 }
 
+export type PartyPreferred = { targetUserId: string | null; guestName: string | null; position: number };
+
+export type PartyCandidate = {
+  userId: string;
+  optedInAt: Date;
+  bookedMinutes: number;
+  playedMinutes: number;
+  partySize: 2 | 3;
+  hasCredentials: boolean;
+  preferred: PartyPreferred[];
+};
+
+export type PlayParty = {
+  hostUserId: string;
+  memberIds: string[];
+  guestNames: string[];
+  partySize: 2 | 3;
+};
+
+function byLightness(left: PartyCandidate, right: PartyCandidate): number {
+  return left.bookedMinutes - right.bookedMinutes
+    || left.optedInAt.getTime() - right.optedInAt.getTime()
+    || left.userId.localeCompare(right.userId);
+}
+
+export function planParties(candidates: PartyCandidate[], maxCourts: number): PlayParty[] {
+  const credentialed = candidates.filter((candidate) => candidate.hasCredentials);
+  const byId = new Map(credentialed.map((candidate) => [candidate.userId, candidate]));
+  const listers = new Map<string, PartyCandidate[]>();
+  for (const host of credentialed) {
+    for (const entry of host.preferred) {
+      if (!entry.targetUserId || entry.targetUserId === host.userId || !byId.has(entry.targetUserId)) continue;
+      const list = listers.get(entry.targetUserId) ?? [];
+      list.push(host);
+      listers.set(entry.targetUserId, list);
+    }
+  }
+  const claim = new Map<string, string>();
+  for (const [partnerId, who] of listers) {
+    const winner = [...who].sort(byLightness)[0];
+    if (winner) claim.set(partnerId, winner.userId);
+  }
+  for (const [partner, host] of [...claim.entries()]) {
+    if (claim.get(host) !== partner) continue;
+    const pair = [byId.get(partner), byId.get(host)].filter((item): item is PartyCandidate => Boolean(item)).sort(byLightness);
+    const keeper = pair[0]?.userId;
+    const other = pair[1]?.userId;
+    if (!keeper || !other) continue;
+    claim.delete(keeper);
+    claim.set(other, keeper);
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [partner, host] of [...claim.entries()]) {
+      if (!claim.has(host)) continue;
+      claim.delete(partner);
+      changed = true;
+    }
+  }
+  const hosts = credentialed.filter((candidate) => !claim.has(candidate.userId)).sort(byLightness);
+  const seated = new Set<string>();
+  const parties: PlayParty[] = [];
+  for (const host of hosts) {
+    if (seated.has(host.userId) || parties.length >= maxCourts) continue;
+    const members = [host.userId];
+    const guests: string[] = [];
+    for (const entry of [...host.preferred].sort((left, right) => left.position - right.position)) {
+      if (members.length + guests.length >= host.partySize) break;
+      if (entry.targetUserId) {
+        if (entry.targetUserId === host.userId || seated.has(entry.targetUserId) || !byId.has(entry.targetUserId)) continue;
+        const owner = claim.get(entry.targetUserId);
+        if (owner && owner !== host.userId) continue;
+        members.push(entry.targetUserId);
+        seated.add(entry.targetUserId);
+      } else if (entry.guestName?.trim()) {
+        guests.push(entry.guestName.trim());
+      }
+    }
+    seated.add(host.userId);
+    parties.push({ hostUserId: host.userId, memberIds: members, guestNames: guests, partySize: host.partySize });
+  }
+  return parties;
+}
+
 export function courtPayer(reservation: BalanceReservation): string {
   if (reservation.guestCount > 0 && reservation.hostUserId) return reservation.hostUserId;
   return reservation.chargedUserId;
@@ -139,6 +224,33 @@ export function pickAccount(
   return ranked[0]?.candidate ?? null;
 }
 
+export function partyPayers(
+  party: PlayParty,
+  candidates: AccountCandidate[],
+  limits: { perDay: number; simultaneous: number },
+  extra: PickExtra = new Map(),
+): AccountCandidate[] {
+  const allowed = new Set(party.memberIds);
+  const host = candidates.find((candidate) => candidate.userId === party.hostUserId);
+  const rest = candidates.filter((candidate) => allowed.has(candidate.userId) && candidate.userId !== party.hostUserId);
+  const within = (candidate: AccountCandidate) => {
+    const added = extra.get(candidate.userId);
+    return candidate.bookingsOnDay + (added?.day ?? 0) < limits.perDay
+      && candidate.simultaneousHeld + (added?.sim ?? 0) < limits.simultaneous;
+  };
+  const ordered: AccountCandidate[] = [];
+  if (host && within(host)) ordered.push(host);
+  const pool = [...rest];
+  while (pool.length > 0) {
+    const next = pickAccount(pool, limits, extra);
+    if (!next) break;
+    ordered.push(next);
+    const index = pool.findIndex((candidate) => candidate.userId === next.userId);
+    pool.splice(index, 1);
+  }
+  return ordered;
+}
+
 export function frontDeadline(startsAt: Date, zone: string): Date {
   return DateTime.fromJSDate(startsAt, { zone }).startOf('day').minus({ days: 1 }).set({ hour: 23, minute: 55, second: 0, millisecond: 0 }).toJSDate();
 }
@@ -146,12 +258,13 @@ export function frontDeadline(startsAt: Date, zone: string): Date {
 export function shouldCancel(input: {
   occupants: number;
   effective: boolean;
+  autoCancel: boolean;
   now: Date;
   startsAt: Date;
   zone: string;
   penaltyGuardMinutes: number;
 }): boolean {
-  if (input.effective || input.occupants >= 2) return false;
+  if (!input.autoCancel || input.effective || input.occupants >= 2) return false;
   if (input.now < frontDeadline(input.startsAt, input.zone)) return false;
   const shut = input.startsAt.getTime() - input.penaltyGuardMinutes * MINUTE;
   return input.now.getTime() < shut && input.now.getTime() < input.startsAt.getTime();
@@ -308,7 +421,7 @@ export function buildCourts(input: {
         reservationId: reservation.id,
         status: reservation.status,
         startsAt: reservation.startsAt.toISOString(),
-        occupants: reservation.occupants,
+        occupants: reservation.status === 'cancelled' ? [] : reservation.occupants,
       });
       continue;
     }
@@ -327,29 +440,7 @@ export function assignOptedIn(input: {
   players: { id: string; displayName: string; partySize: 2 | 3 }[];
   courtsTargeted: number | null;
 }): CourtView[] {
-  const divisor = partyDivisor(input.players.map((player) => player.partySize));
-  const active = input.courtsTargeted ?? courtsToBook(input.players.length, input.courts.length, divisor);
-  const spots: Spot[] = divisor === 2 ? ['front_left', 'front_right'] : ['front_left', 'front_right', 'back'];
-  const seated = new Set(input.courts.flatMap((court) => court.occupants.flatMap((occupant) => (occupant.userId ? [occupant.userId] : []))));
-  const waiting = input.players.filter((player) => !seated.has(player.id));
-  return input.courts.map((court) => {
-    const holdsBooking = Boolean(court.reservationId);
-    if (holdsBooking || court.courtIndex >= active || court.status === 'cancelled' || court.status === 'played' || court.status === 'skipped') return court;
-    const occupants = [...court.occupants];
-    for (const position of spots) {
-      if (occupants.some((occupant) => occupant.position === position)) continue;
-      const next = waiting.shift();
-      if (!next) break;
-      occupants.push({
-        id: `optin:${next.id}`,
-        position,
-        userId: next.id,
-        guestName: null,
-        displayName: next.displayName,
-      });
-    }
-    return { ...court, occupants };
-  });
+  return input.courts.map((court) => ({ ...court }));
 }
 
 export type SlotRuleInput = {
