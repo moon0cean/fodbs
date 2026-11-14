@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, type Account, type Balance, type Court, type Dashboard, type Opening, type SessionUser } from './api';
 import { AdminScreen } from './Admin';
 import { CourtCard } from './Court';
-import { Title } from './Help';
+import { Help, Title } from './Help';
 import { PAGE_SIZE, Pager } from './Pager';
 import { courtNumber } from './courts';
 import { useI18n, type Lang } from './i18n';
@@ -296,12 +296,18 @@ function DashboardScreen({ me, onError }: { me: SessionUser; onError: (value: st
                     court,
                   }];
                 })}
+                members={data.activeUsers}
                 onChange={() => load(data.date)}
                 onError={onError}
               />
             ))}
           </div>
         </div>
+        {data.occurrences.some((occurrence) => occurrence.unplaced.length > 0) && (
+          <p className="notice">
+            {t('noCourtFor')}: {data.occurrences.flatMap((occurrence) => occurrence.unplaced.map((player) => player.displayName)).join(', ')}
+          </p>
+        )}
       </section>
     </main>
   );
@@ -323,6 +329,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
   const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
   const [preferredTime, setPreferredTime] = useState('19:00');
   const [partySize, setPartySize] = useState<2 | 3>(3);
+  const [autoCancel, setAutoCancel] = useState(false);
 
   function load() {
     api<Account>('/api/account').then((next) => {
@@ -334,6 +341,7 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
         setPreferredTime(next.preferences.preferredTime);
         setPartySize(next.preferences.partySize);
       }
+      setAutoCancel(next.autoCancel);
     }).catch((reason: unknown) => setError(message(reason, explain)));
   }
 
@@ -518,12 +526,26 @@ function AccountScreen({ onActive }: { onActive: (user: SessionUser) => void }) 
             );
           })}
         </fieldset>
-        <label>{t('preferredTime')}<input type="time" value={preferredTime} onChange={(event) => { setPreferredTime(event.target.value); setPlaySaved(false); }} required /></label>
+        <label>{t('preferredTime')}<input type="time" lang={lang === 'en' ? 'en-GB' : 'es-ES'} value={preferredTime} onChange={(event) => { setPreferredTime(event.target.value); setPlaySaved(false); }} required /></label>
         <fieldset className="days">
           <legend>{t('party')}</legend>
           <button type="button" className={partySize === 2 ? 'on' : 'ghost'} aria-pressed={partySize === 2} onClick={() => { setPartySize(2); setPlaySaved(false); }}>{t('pair')}</button>
           <button type="button" className={partySize === 3 ? 'on' : 'ghost'} aria-pressed={partySize === 3} onClick={() => { setPartySize(3); setPlaySaved(false); }}>{t('trio')}</button>
         </fieldset>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={autoCancel}
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              setAutoCancel(enabled);
+              void api('/api/account/auto-cancel', { method: 'PUT', body: JSON.stringify({ enabled }) })
+                .catch((reason: unknown) => setError(message(reason, explain)));
+            }}
+          />
+          {t('autoCancel')}
+          <Help text={t('autoCancelHint')} />
+        </label>
         <button className="solid" type="submit">{t('savePlay')}</button>
         </div>
         {playSaved && <p className="notice" role="status">{t('saved')}</p>}
@@ -603,7 +625,7 @@ function BookWizard({ date, onBooked, onError }: {
         }}
       >
         <div className="inline-fields">
-          <label>{t('preferredTime')}<input type="time" step={1800} value={time} onChange={(event) => setTime(event.target.value.slice(0, 5))} required /></label>
+          <label>{t('preferredTime')}<input type="time" lang={lang === 'en' ? 'en-GB' : 'es-ES'} step={1800} value={time} onChange={(event) => setTime(event.target.value.slice(0, 5))} required /></label>
           <label>{t('duration')}
             <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 30 | 60 | 90 | 120)}>
               {[30, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes}</option>)}

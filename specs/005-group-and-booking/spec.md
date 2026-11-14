@@ -43,7 +43,7 @@ A member keeps an ordered list of other members and guest names. The list fills 
 - **FR-204**: Confirming a search result MUST book that court on the member's DiR account, store the reservation, and seat them, unless the daily or simultaneous cap says no.
 - **FR-205**: An admin MUST be able to set days ahead (default 7), how often the worker checks (default 15 seconds), and whether it may try ±30 minutes (default on). The worker uses those values, and the environment values when no row exists.
 - **FR-206**: An admin MUST be able to enable an availability check on one DiR account, every N hours (default 6). The check uses the same read-only look as the wizard. Results appear on the board for courts that have no reservation.
-- **FR-207**: A member MUST be able to save an ordered list of other members and guest names. After they book or sit, empty spots are filled from that list. Preferred members are seated when the actor is the charged account, and requested otherwise. Guest names are added only when the actor may add a guest. The list MUST NOT create a club booking and MUST NOT send mail.
+- **FR-207**: A member MUST be able to save an ordered list of other members and guest names. That list is the partner list for their play party in `006-court-parties`. A saved member is seated when a court is booked only if they are also in for that time and may take a seat. Guest names are added as guests, and only when the actor may add a guest. The list MUST NOT create a club booking by itself and MUST NOT send mail.
 - **FR-208**: A closed help mark on the group card, the roster, booking, opt-in, the court, bonos, and charged bookings MUST expand a short note and MUST stay closed until opened.
 
 ## Assumptions

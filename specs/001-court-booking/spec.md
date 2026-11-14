@@ -82,31 +82,23 @@ played minutes with the reservation rows.
 ### User Story 4 - Grab at the horizon and cancel empty courts (Priority: P1)
 
 Admins define a weekly slot. Members who are in before the horizon opens are
-counted. At 00:00 Madrid, `horizonDays` before the slot's date, the worker books `min(4, ceil(optedIn / 3))`
-courts on DiR. The account used is the eligible member with the lowest
-charge minus play who is still under the gym quota. An account that cannot
-pay with bons is skipped and the next account is tried on that same court. The charge includes
-future courts. Play counts only after the reservation has started. Sessions
-are opened shortly before that instant. A held court with fewer than two
-saved players is cancelled from 23:55 Madrid the evening before, and
-not inside the penalty guard. Two players in any boxes stay. The same grab
+grouped into play parties, as specified in `006-court-parties`. At 00:00 Madrid, `horizonDays` before the slot's date, the worker books one court per party, capped at four. The account charged is the host's, then another member of that same party who can pay. An account that cannot pay with bons is skipped and the next account in that party is tried on that same court. A member outside the party is not charged and is not seated. Sessions
+are opened shortly before that instant. A held court is cancelled for being short only when the charged member has turned automatic cancellation on. That choice is off by default. When it is on, fewer than two saved players cancels the court from 23:55 Madrid the evening before, and not inside the penalty guard. Two players in any boxes stay. The same grab
 does not book a court twice.
 
 **Why this priority**: Other members of the gym can take the same courts. The
 scheduler exists to be first, and to give back courts the group will not use.
 
 **Independent Test**: Run the scheduler against a fake gateway with five
-opted-in members and two eligible accounts. Expect two bookings on two
-accounts, a second tick that does not add bookings, and a cancel of a court
-that stays empty inside the cancel window.
+opted-in members who have not chosen each other. Expect one court each up to four, a second tick that does not add bookings, and no automatic cancel while the charged member's preference is off.
 
 **Acceptance Scenarios**:
 
-1. **Given** five members in and enough quota, **When** the horizon opens, **Then** two courts are booked and the accounts are the ones with the lowest booking burden.
+1. **Given** five members in who have not chosen each other, and enough quota, **When** the horizon opens, **Then** four courts are booked and the fifth member is not seated on any of them. Members who chose each other share one court, as specified in `006-court-parties`.
 2. **Given** nobody in, **When** the horizon opens, **Then** no court is booked and the slot is frozen at zero courts.
 3. **Given** a member already at two bookings that day or three future holds, **When** the worker chooses an account, **Then** that member is skipped.
 4. **Given** a successful grab, **When** the tick runs again, **Then** no second portal booking is made for those courts.
-5. **Given** a held court with only one player, **When** the clock reaches 23:55 Madrid the day before, **Then** the gateway cancel is called and the reservation becomes cancelled. A held court with two players in any boxes stays.
+5. **Given** a held court with only one player, **When** the clock reaches 23:55 Madrid the day before, **Then** the court stays when the charged member's automatic cancellation is off, and the gateway cancel runs when that preference is on. A held court with two players in any boxes stays either way.
 6. **Given** the clock inside the last penalty-guard minutes, **When** the court is still empty, **Then** the worker does not call cancel.
 7. **Given** a portal error, **When** the tick finishes, **Then** the HTTP server is unaffected and the grab is retried on a later tick.
 8. **Given** the planned time is unavailable on every court, **When** another court is free 30 minutes earlier or later the same day, **Then** that court is booked at the free time and the board shows that time.
@@ -155,16 +147,16 @@ confirm those admin routes are rejected.
 - **FR-005**: The system MUST encrypt each gym identifier and password with AES-256-GCM, a random nonce, and the user id as additional authenticated data.
 - **FR-006**: The API MUST NOT return a gym password. The account owner MAY see their own gym identifier.
 - **FR-007**: The dashboard MUST list active members, the group booked-versus-played balance, a date slider that starts on the current Madrid day and covers the horizon, and four courts in a 2x2. Earlier days MUST NOT appear on that slider.
-- **FR-008**: A member MUST be able to mark themselves in or out of a future slot, and MUST be able to add or remove only themselves on a held court, with a maximum of three players.
+- **FR-008**: A member MUST be able to mark themselves in or out of a future slot. Filling an empty spot on a held court with themselves, another active member, or a guest follows `006-court-parties`. A court holds at most three players.
 - **FR-009**: Joining a second court of the same slot MUST move the member off the first court.
 - **FR-010**: The balance MUST show total booked hours, hours booked this week that have not started, hours booked next week that have not started, hours played, and the difference, for each member and for the group. Total booked minutes are the duration of every non-cancelled reservation charged to that account, including a future court that is not yet effective; a court with a guest is charged to its host. This week and next week are the current and following Monday–Sunday weeks in Madrid, and only reservations that have not started. Played minutes are the duration of non-cancelled reservations that have already started and on which that member sits; a future seat does not count, and the group total counts every seated member. The difference is played minutes minus the booked minutes of reservations that have already started. A future booking MUST NOT change the difference. A cancelled reservation MUST add nothing.
-- **FR-011**: At the horizon opening the worker MUST freeze the court count at `min(maxCourts, ceil(optedIn / maxPerCourt))` using who was in at that instant, defaulting to 4 courts and 3 players.
+- **FR-011**: At the horizon opening the worker MUST freeze the court count at one court per play party, capped at 4, using who was in at that instant. Parties are defined in `006-court-parties`. Later opt-ins do not add courts.
 - **FR-012**: The worker MUST open portal sessions `preLoginMinutes` before the opening and submit bookings at the opening. The opening is 00:00 Madrid on the day `horizonDays` before the slot's Madrid date. The default horizon is 7 days and the default pre-login is 2 minutes. After the opening, the worker MUST keep trying until the slot starts.
 - **FR-021**: A grab MUST try every court at the planned time, then the same search 30 minutes earlier and 30 minutes later, staying on the same Madrid day. The reservation MUST record the time that was actually booked, and the board MUST show a court time only for a real reservation. When every try is unavailable, FODBS MUST email the opted-in members once and MUST NOT present any court as booked.
 - **FR-022**: An imported gym booking at the same Madrid start, duration, and club as a weekly slot MUST count as that slot. FODBS MUST keep one occurrence for that time, MUST show only the courts that are actually reserved, and MUST NOT grab another court once the targeted count is already reserved.
-- **FR-013**: Among accounts under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 4), the worker MUST choose the lowest charge minus play. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started. When that account cannot pay with bons, the worker MUST try the next eligible account on the same court.
-- **FR-014**: A grab MUST be idempotent per occurrence, offset, and court index. Storing the reservation MUST seat the charged member in the left front box.
-- **FR-015**: The worker MUST cancel a held court with fewer than two saved occupants from 23:55 Madrid the day before the slot until `start - penaltyGuardMinutes`. The default penalty guard is 20 minutes. An occupant is a member or a guest in any box. Two occupants, or a court already effective, MUST stay. Two occupants at or after that deadline MUST make the booking effective.
+- **FR-013**: The accounts that may pay for a court are the members of that play party who are under `dirMaxPerDay` (default 2) and `dirMaxSimultaneous` (default 4). The host is tried first. The charge is every non-cancelled reservation on that gym account, including future and not-yet-effective courts. Play is only reservations that have already started. When that account cannot pay with bons, the worker MUST try the next party member on the same court and MUST NOT try a member from outside the party.
+- **FR-014**: A grab MUST be idempotent per occurrence, offset, and court index. Storing the reservation MUST seat the charged member in the left front box, then the rest of that party only, as specified in `006-court-parties`.
+- **FR-015**: Automatic cancellation follows `006-court-parties`. It is off unless the charged member has turned it on. When it is on, the worker MUST cancel a held court with fewer than two saved occupants from 23:55 Madrid the day before the slot until `start - penaltyGuardMinutes`. The default penalty guard is 20 minutes. An occupant is a member or a guest in any box. Two occupants, or a court already effective, MUST stay. Two occupants at or after that deadline MUST make the booking effective. When the preference is off, the worker MUST NOT cancel that court for being short.
 - **FR-016**: Portal calls MUST go through `GymGateway`. A portal failure MUST be recorded and MUST NOT crash the HTTP process.
 - **FR-017**: Admins MUST be able to create invites, activate or deactivate users, and create or deactivate slot rules. Members MUST NOT.
 - **FR-018**: Automated tests MUST NOT send requests to `dir.cat` or `pistes.esportiurocafort.com`.
@@ -189,8 +181,8 @@ confirm those admin routes are rejected.
 
 - **SC-001**: An invited person can reach a signed-in dashboard without any public signup path.
 - **SC-002**: A database read of gym credentials shows ciphertext, and the account JSON has no password field.
-- **SC-003**: Five opted-in members produce exactly two court bookings on the fake gateway, and a repeated tick does not increase that count.
-- **SC-004**: A held court with one player is cancelled from 23:55 Madrid the evening before and is left alone inside the penalty guard. Two players keep it.
+- **SC-003**: Five opted-in members who have not chosen each other produce four court bookings on the fake gateway, the fifth is on none of them, and a repeated tick does not increase that count.
+- **SC-004**: A held court with one player stays when automatic cancellation is off, and is cancelled from 23:55 Madrid the evening before when it is on. It is left alone inside the penalty guard. Two players keep it.
 - **SC-005**: A fourth player cannot sit on a court, and a player cannot occupy two courts of the same slot.
 - **SC-006**: `npm test` passes without network access to DiR.
 

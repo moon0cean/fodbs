@@ -1,17 +1,16 @@
 import { DateTime } from 'luxon';
 import {
-  courtsToBook,
   horizonOpenAt,
   madridDate,
   notePick,
-  partyDivisor,
-  pickAccount,
+  partyPayers,
   redactSecrets,
   slotsToTry,
   frontDeadline,
   shouldCancel,
   type AccountCandidate,
   type PickExtra,
+  type PlayParty,
 } from './domain.js';
 import type { GymBookRequest, GymGateway, GymSession } from './gym/gateway.js';
 
@@ -41,6 +40,8 @@ export interface SchedulerStore {
   markPlayed(now: Date): Promise<void>;
   listUpcoming(now: Date): Promise<UpcomingOccurrence[]>;
   optedInPlayers(occurrenceId: string): Promise<{ userId: string; partySize: 2 | 3 }[]>;
+  playParties(occurrenceId: string, now: Date, maxCourts: number): Promise<PlayParty[]>;
+  seatedMemberIds(occurrenceId: string): Promise<Set<string>>;
   candidates(startsAt: Date, now: Date): Promise<AccountCandidate[]>;
   credentials(userId: string): Promise<{ username: string; password: string } | null>;
   freezeCourts(occurrenceId: string, courtsTargeted: number, now: Date): Promise<number>;
@@ -58,6 +59,7 @@ export interface SchedulerStore {
     externalRef: string;
     startsAt: Date;
     now: Date;
+    party: PlayParty;
   }): Promise<void>;
   heldOpen(now: Date): Promise<{
     id: string;
@@ -66,6 +68,7 @@ export interface SchedulerStore {
     startsAt: Date;
     occupants: number;
     effective: boolean;
+    autoCancel: boolean;
   }[]>;
   markEffective(id: string): Promise<void>;
   markCancelled(id: string, now: Date): Promise<void>;
@@ -143,12 +146,11 @@ export async function runSchedulerTick(input: {
     const openAt = horizonOpenAt(occurrence.startsAt, horizonDays, config.zone);
     const warmAt = new Date(openAt.getTime() - config.preLoginMinutes * MINUTE);
     if (now < warmAt || now >= openAt) continue;
-    const optedIn = await store.optedInPlayers(occurrence.id);
-    const count = courtsToBook(optedIn.length, config.maxCourts, partyDivisor(optedIn.map((player) => player.partySize)));
+    const parties = await store.playParties(occurrence.id, now, config.maxCourts);
     const candidates = await store.candidates(occurrence.startsAt, now);
-    for (let index = 0; index < count; index += 1) {
-      const account = pickAccount(candidates, limits, warmed);
-      if (!account) break;
+    for (const party of parties) {
+      const account = partyPayers(party, candidates, limits, warmed)[0];
+      if (!account) continue;
       notePick(warmed, account.userId);
       keep.add(account.userId);
       const creds = await store.credentials(account.userId);
@@ -170,109 +172,98 @@ export async function runSchedulerTick(input: {
   for (const occurrence of upcoming) {
     const openAt = horizonOpenAt(occurrence.startsAt, horizonDays, config.zone);
     if (now < openAt) continue;
+    const parties = await store.playParties(occurrence.id, now, config.maxCourts);
     let targeted = occurrence.courtsTargeted;
-    if (targeted === null) {
-      const optedIn = await store.optedInPlayers(occurrence.id);
-      const frozen = courtsToBook(optedIn.length, config.maxCourts, partyDivisor(optedIn.map((player) => player.partySize)));
-      targeted = await store.freezeCourts(occurrence.id, frozen, now);
-    }
+    if (targeted === null) targeted = await store.freezeCourts(occurrence.id, parties.length, now);
     if (targeted <= 0) continue;
     if (await store.reservationsAt(occurrence.startsAt, occurrence.clubCode) >= targeted) continue;
     const taken = await store.reservationCourtIndexes(occurrence.id);
+    const seated = await store.seatedMemberIds(occurrence.id);
+    const room = targeted - taken.size;
+    const pending = parties.filter((party) => !party.memberIds.some((id) => seated.has(id))).slice(0, Math.max(0, room));
     let secured = taken.size;
     let hardMiss = false;
     let pendingRetry = false;
     let transient = false;
+    const bookedExtra: PickExtra = new Map();
     const day = madridDate(occurrence.startsAt, config.zone);
-    for (const slot of slots) {
-      if (secured >= targeted || transient) break;
-      if (taken.has(slot.courtIndex)) continue;
-      const startsAt = new Date(occurrence.startsAt.getTime() + slot.offsetMinutes * MINUTE);
-      if (startsAt.getTime() <= now.getTime() || madridDate(startsAt, config.zone) !== day) continue;
-      const key = `grab:${occurrence.id}:${slot.offsetMinutes}:${slot.courtIndex}`;
-      const claim = await store.claimAttempt(key, 'grab', now);
-      if (claim === 'busy') {
-        pendingRetry = true;
-        continue;
-      }
-      if (claim !== 'claimed') continue;
-      const skipped = new Set<string>();
+    for (const party of pending) {
+      if (transient) break;
       let bookedThis = false;
-      let failure = '';
-      while (!bookedThis) {
-        const account = pickAccount(
-          (await store.candidates(startsAt, now)).filter((candidate) => !skipped.has(candidate.userId)),
-          limits,
-        );
-        if (!account) {
-          if (skipped.size === 0) {
-            log({ msg: 'no_eligible_account', occurrenceId: occurrence.id, courtIndex: slot.courtIndex });
-            failure = '';
-          }
-          break;
-        }
-        const creds = await store.credentials(account.userId);
-        if (!creds) {
-          skipped.add(account.userId);
-          failure = 'missing_credentials';
+      for (const slot of slots) {
+        if (bookedThis || transient) break;
+        if (taken.has(slot.courtIndex)) continue;
+        const startsAt = new Date(occurrence.startsAt.getTime() + slot.offsetMinutes * MINUTE);
+        if (startsAt.getTime() <= now.getTime() || madridDate(startsAt, config.zone) !== day) continue;
+        const payers = partyPayers(party, await store.candidates(startsAt, now), limits, bookedExtra);
+        if (payers.length === 0) break;
+        const key = `grab:${occurrence.id}:${slot.offsetMinutes}:${slot.courtIndex}`;
+        const claim = await store.claimAttempt(key, 'grab', now);
+        if (claim === 'busy') {
+          pendingRetry = true;
           continue;
         }
-        keep.add(account.userId);
-        try {
-          const session = await sessions.get(account.userId, creds);
-          const request: GymBookRequest = {
-            clubCode: occurrence.clubCode,
-            courtIndex: slot.courtIndex,
-            startsAt,
-            durationMinutes: occurrence.durationMinutes,
-          };
-          const booked = await gateway.book(session, request);
-          try {
-            await store.createReservation({
-              occurrenceId: occurrence.id,
-              courtIndex: slot.courtIndex,
-              chargedUserId: account.userId,
-              externalRef: booked.externalRef,
-              startsAt,
-              now,
-            });
-          } catch (error) {
-            await gateway.cancel(session, booked.externalRef).catch(() => undefined);
-            throw error;
-          }
-          taken.add(slot.courtIndex);
-          secured += 1;
-          await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
-          await store.requestSync(account.userId);
-          log({
-            msg: 'booked',
-            occurrenceId: occurrence.id,
-            courtIndex: slot.courtIndex,
-            offsetMinutes: slot.offsetMinutes,
-            userId: account.userId,
-            externalRef: booked.externalRef,
-          });
-          bookedThis = true;
-        } catch (error) {
-          const detail = redactSecrets(errorText(error), [creds.username, creds.password]);
-          log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex: slot.courtIndex, offsetMinutes: slot.offsetMinutes, userId: account.userId, detail });
-          if (detail === 'bons_unavailable') {
-            skipped.add(account.userId);
-            failure = detail;
+        if (claim !== 'claimed') continue;
+        let failure = '';
+        for (const account of payers) {
+          const creds = await store.credentials(account.userId);
+          if (!creds) {
+            failure = 'missing_credentials';
             continue;
           }
-          failure = detail;
-          break;
+          keep.add(account.userId);
+          try {
+            const session = await sessions.get(account.userId, creds);
+            const request: GymBookRequest = {
+              clubCode: occurrence.clubCode,
+              courtIndex: slot.courtIndex,
+              startsAt,
+              durationMinutes: occurrence.durationMinutes,
+            };
+            const booked = await gateway.book(session, request);
+            try {
+              await store.createReservation({
+                occurrenceId: occurrence.id,
+                courtIndex: slot.courtIndex,
+                chargedUserId: account.userId,
+                externalRef: booked.externalRef,
+                startsAt,
+                now,
+                party,
+              });
+            } catch (error) {
+              await gateway.cancel(session, booked.externalRef).catch(() => undefined);
+              throw error;
+            }
+            taken.add(slot.courtIndex);
+            secured += 1;
+            notePick(bookedExtra, account.userId);
+            await store.finishAttempt(key, 'succeeded', booked.externalRef, now);
+            await store.requestSync(account.userId);
+            log({
+              msg: 'booked',
+              occurrenceId: occurrence.id,
+              courtIndex: slot.courtIndex,
+              offsetMinutes: slot.offsetMinutes,
+              userId: account.userId,
+              externalRef: booked.externalRef,
+            });
+            bookedThis = true;
+            break;
+          } catch (error) {
+            const detail = redactSecrets(errorText(error), [creds.username, creds.password]);
+            log({ msg: 'book_failed', occurrenceId: occurrence.id, courtIndex: slot.courtIndex, offsetMinutes: slot.offsetMinutes, userId: account.userId, detail });
+            failure = detail;
+            if (detail === 'bons_unavailable') continue;
+            break;
+          }
         }
+        if (bookedThis) continue;
+        await store.finishAttempt(key, 'failed', failure || 'no_eligible_account', now);
+        if (failure === 'bons_unavailable') break;
+        if (UNAVAILABLE.has(failure)) hardMiss = true;
+        else transient = true;
       }
-      if (bookedThis) continue;
-      if (skipped.size === 0 && failure === '') {
-        await store.finishAttempt(key, 'failed', 'no_eligible_account', now);
-        break;
-      }
-      await store.finishAttempt(key, 'failed', failure || 'no_eligible_account', now);
-      if (UNAVAILABLE.has(failure)) hardMiss = true;
-      else transient = true;
     }
     if (secured === 0 && hardMiss && !pendingRetry && !transient) {
       const claimed = await store.claimMiss(occurrence.id);
@@ -299,6 +290,7 @@ export async function runSchedulerTick(input: {
     const inWindow = shouldCancel({
       occupants: reservation.occupants,
       effective: reservation.effective,
+      autoCancel: reservation.autoCancel,
       now,
       startsAt: reservation.startsAt,
       zone: config.zone,
@@ -307,7 +299,7 @@ export async function runSchedulerTick(input: {
     if (!inWindow) {
       const guard = reservation.startsAt.getTime() - config.penaltyGuardMinutes * MINUTE;
       const short = reservation.occupants < 2;
-      if (!reservation.effective && short && now.getTime() >= guard && now.getTime() < reservation.startsAt.getTime()) {
+      if (reservation.autoCancel && !reservation.effective && short && now.getTime() >= guard && now.getTime() < reservation.startsAt.getTime()) {
         log({ msg: 'cancel_skipped_penalty_guard', reservationId: reservation.id });
       }
       continue;
